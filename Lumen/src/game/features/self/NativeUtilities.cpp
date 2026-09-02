@@ -1,11 +1,18 @@
 #include "core/commands/Command.hpp"
+#include "core/commands/Commands.hpp"
+#include "core/commands/IntCommand.hpp"
 #include "game/backend/Self.hpp"
 #include "game/rdr/Natives.hpp"
+
+#include <algorithm>
 
 namespace YimMenu::Features
 {
 	namespace
 	{
+		IntCommand g_BountyAmount("bountyamount", "Valor da recompensa", "Valor da recompensa em centavos do jogo (100 = $1,00).", 0, 150000, 0);
+		IntCommand g_WantedScore("wantedscore", "Nivel de hostilidade", "Intensidade de procura local entre 0 e 5.", 0, 5, 0);
+
 		class RestorePlayerCommand final : public Command
 		{
 		public:
@@ -134,6 +141,90 @@ namespace YimMenu::Features
 			}
 		};
 
+		class ApplyBountyCommand final : public Command
+		{
+		public:
+			ApplyBountyCommand() :
+			    Command("applybounty", "Aplicar recompensa", "Aplica ao personagem o valor configurado acima.")
+			{
+			}
+
+		private:
+			void OnCall() override
+			{
+				LAW::SET_BOUNTY(PLAYER::PLAYER_ID(), g_BountyAmount.GetState());
+			}
+		};
+
+		class ApplyWantedScoreCommand final : public Command
+		{
+		public:
+			ApplyWantedScoreCommand() :
+			    Command("applywantedscore", "Aplicar hostilidade", "Aplica o nível de hostilidade configurado acima.")
+			{
+			}
+
+		private:
+			void OnCall() override
+			{
+				LAW::SET_WANTED_SCORE(PLAYER::PLAYER_ID(), g_WantedScore.GetState());
+				if (g_WantedScore.GetState() > 0)
+					LAW::_FORCE_LAW_ON_LOCAL_PLAYER_IMMEDIATELY();
+			}
+		};
+
+		class MaximumHostilityCommand final : public Command
+		{
+		public:
+			MaximumHostilityCommand() :
+			    Command("maximumhostility", "Hostilidade maxima", "Define a intensidade de procura como 5 e chama a lei imediatamente.")
+			{
+			}
+
+		private:
+			void OnCall() override
+			{
+				g_WantedScore.SetState(5);
+				LAW::SET_WANTED_SCORE(PLAYER::PLAYER_ID(), 5);
+				LAW::_FORCE_LAW_ON_LOCAL_PLAYER_IMMEDIATELY();
+			}
+		};
+
+		class ReadLawStateCommand final : public Command
+		{
+		public:
+			ReadLawStateCommand() :
+			    Command("readlawstate", "Ler valores atuais", "Atualiza os campos com a recompensa e hostilidade atuais do personagem.")
+			{
+			}
+
+		private:
+			void OnCall() override
+			{
+				g_BountyAmount.SetState(std::clamp(LAW::GET_BOUNTY(PLAYER::PLAYER_ID()), 0, 150000));
+				g_WantedScore.SetState(std::clamp(LAW::GET_WANTED_SCORE(PLAYER::PLAYER_ID()), 0, 5));
+			}
+		};
+
+		class ClearLawStateCommand final : public Command
+		{
+		public:
+			ClearLawStateCommand() :
+			    Command("clearlawstate", "Limpar recompensa e hostilidade", "Remove a recompensa, o wanted score e a perseguição atual.")
+			{
+			}
+
+		private:
+			void OnCall() override
+			{
+				LAW::CLEAR_BOUNTY(PLAYER::PLAYER_ID());
+				LAW::CLEAR_WANTED_SCORE(PLAYER::PLAYER_ID());
+				LAW::_SET_BOUNTY_HUNTER_PURSUIT_CLEARED();
+				g_BountyAmount.SetState(0);
+				g_WantedScore.SetState(0);
+			}
+		};
+
 		RestorePlayerCommand g_RestorePlayer;
 		CleanPlayerCommand g_CleanPlayer;
 		RandomOutfitCommand g_RandomOutfit;
@@ -141,5 +232,10 @@ namespace YimMenu::Features
 		RagdollPlayerCommand g_RagdollPlayer;
 		RemoveWeaponsCommand g_RemoveWeapons;
 		GroundPlayerCommand g_GroundPlayer;
+		ApplyBountyCommand g_ApplyBounty;
+		ApplyWantedScoreCommand g_ApplyWantedScore;
+		MaximumHostilityCommand g_MaximumHostility;
+		ReadLawStateCommand g_ReadLawState;
+		ClearLawStateCommand g_ClearLawState;
 	}
 }

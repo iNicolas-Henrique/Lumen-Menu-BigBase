@@ -16,6 +16,9 @@ base de referência publicada por alloc8or.
 | Física | `SET_PED_TO_RAGDOLL` | Cair no chão |
 | Posicionamento | `PLACE_ENTITY_ON_GROUND_PROPERLY` | Colocar no solo |
 | Armas | `REMOVE_ALL_PED_WEAPONS` | Remover todas as armas |
+| Lei | `GET_BOUNTY`, `SET_BOUNTY`, `CLEAR_BOUNTY` | Consultar, definir e limpar recompensa |
+| Lei | `GET_WANTED_SCORE`, `SET_WANTED_SCORE`, `CLEAR_WANTED_SCORE` | Hostilidade ajustável de 0 a 5 |
+| Lei | `_FORCE_LAW_ON_LOCAL_PLAYER_IMMEDIATELY`, `_SET_BOUNTY_HUNTER_PURSUIT_CLEARED` | Hostilidade máxima e fim da perseguição |
 
 As opções foram adicionadas à categoria **Personagem > Utilidades** e reutilizam
 o sistema `Command`/`CommandItem`. Nenhum hook, pointer, backend gráfico ou native
