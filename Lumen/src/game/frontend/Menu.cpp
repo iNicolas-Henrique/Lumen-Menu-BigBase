@@ -87,6 +87,7 @@ namespace YimMenu
 		style.Colors[ImGuiCol_HeaderActive] = lightGreen;
 		style.Colors[ImGuiCol_SliderGrab] = lightGreen;
 		style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.32f, 0.46f, 0.10f, 1.0f);
+		YimMenu::Submenus::ApplyMenuColors();
 
 		style.GrabRounding = style.FrameRounding = style.ChildRounding = style.WindowRounding = 6.0f;
 		style.PopupRounding = style.ScrollbarRounding = 6.0f;

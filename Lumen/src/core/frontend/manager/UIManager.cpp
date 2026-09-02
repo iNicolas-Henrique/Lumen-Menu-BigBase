@@ -26,6 +26,31 @@ namespace YimMenu
 		{
 			drawList->AddText(
 			    ImGui::GetFont(), ImGui::GetFontSize() * scale, position, color, text.data(), text.data() + text.size(), width);
+		constexpr float kMenuX = 42.0f;
+		constexpr float kMenuY = 82.0f;
+		constexpr float kMenuWidth = 360.0f;
+		constexpr float kHeaderHeight = 72.0f;
+		constexpr float kSubmenuHeight = 32.0f;
+		constexpr float kOptionHeight = 31.0f;
+		constexpr float kFooterHeight = 43.0f;
+		constexpr float kDescriptionHeight = 62.0f;
+		constexpr std::size_t kOptionsPerPage = 11;
+
+		ImU32 Color(const ImVec4& color, float alpha = 1.0f)
+		{
+			ImVec4 adjusted = color;
+			adjusted.w *= alpha;
+			return ImGui::ColorConvertFloat4ToU32(adjusted);
+		}
+
+		void DrawText(ImDrawList* drawList, const ImVec2& position, ImU32 color, std::string_view text)
+		{
+			drawList->AddText(position, color, text.data(), text.data() + text.size());
+		}
+
+		void DrawWrappedText(ImDrawList* drawList, const ImVec2& position, ImU32 color, std::string_view text, float width)
+		{
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), position, color, text.data(), text.data() + text.size(), width);
 		}
 	}
 
@@ -84,6 +109,12 @@ namespace YimMenu
 		else if (key == VK_DOWN)
 			m_Selected = (m_Selected + 1) % count;
 		else if (m_Level == Level::Options && (key == VK_LEFT || key == VK_RIGHT))
+		{
+			auto items = GetCurrentItems();
+			items[m_Selected]->HandleAction(key == VK_LEFT ? Classic::OptionAction::Left : Classic::OptionAction::Right);
+		}
+		else if (key == VK_RETURN)
+		{
 		{
 			auto items = GetCurrentItems();
 			items[m_Selected]->HandleAction(key == VK_LEFT ? Classic::OptionAction::Left : Classic::OptionAction::Right);
@@ -248,6 +279,83 @@ namespace YimMenu
 		}
 		drawList->AddRect(ImVec2(kMenuX - 2.0f, kMenuY - 2.0f), ImVec2(kMenuX + kMenuWidth + 2.0f, y + 2.0f), IM_COL32(12, 16, 7, 230), 6.0f, 0, 4.0f);
 		drawList->AddRect(ImVec2(kMenuX, kMenuY), ImVec2(kMenuX + kMenuWidth, y), kLightGreen, 4.0f, 0, 1.0f);
+
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
+		const ImU32 white = IM_COL32(245, 241, 232, 255);
+		float y = kMenuY;
+
+		drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kHeaderHeight), IM_COL32(28, 19, 13, 245), 4.0f);
+		drawList->AddRectFilledMultiColor(ImVec2(kMenuX, y + kHeaderHeight - 5.0f), ImVec2(kMenuX + kMenuWidth, y + kHeaderHeight), Color(accent), Color(accent, 0.45f), Color(accent, 0.45f), Color(accent));
+		DrawText(drawList, ImVec2(kMenuX + 16.0f, y + 14.0f), white, "L U M E N");
+		DrawText(drawList, ImVec2(kMenuX + 16.0f, y + 40.0f), IM_COL32(190, 181, 164, 255), "RED DEAD REDEMPTION 2");
+		y += kHeaderHeight;
+
+		std::string title = "MENU PRINCIPAL";
+		if (m_Level != Level::Root && m_ActiveSubmenu)
+			title = m_Level == Level::Categories ? m_ActiveSubmenu->m_Name : m_ActiveSubmenu->GetActiveCategory()->m_Name;
+		drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kSubmenuHeight), IM_COL32(12, 12, 12, 235));
+		DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 7.0f), white, title);
+		const std::size_t count = currentCount;
+		const std::string counter = count ? std::format("{} / {}", m_Selected + 1, count) : "0 / 0";
+		DrawText(drawList, ImVec2(kMenuX + kMenuWidth - ImGui::CalcTextSize(counter.c_str()).x - 10.0f, y + 7.0f), IM_COL32(180, 180, 180, 255), counter);
+		y += kSubmenuHeight;
+
+		std::vector<std::pair<std::string, std::string>> entries;
+		entries.reserve(currentCount + (m_Level == Level::Root ? 1 : 0));
+		std::string description;
+		if (m_Level == Level::Root)
+		{
+			for (const auto& submenu : m_Submenus)
+				entries.emplace_back(submenu->m_Name, ">");
+			entries.emplace_back("Encerrar Lumen", "");
+		}
+		else if (m_Level == Level::Categories)
+		{
+			for (const auto& category : m_ActiveSubmenu->m_Categories)
+				entries.emplace_back(category->m_Name, ">");
+		}
+		else
+		{
+			for (UIItem* item : currentItems)
+				entries.emplace_back(item->GetMenuLabel(), item->GetMenuValue());
+			if (m_Selected < currentItems.size())
+				description = currentItems[m_Selected]->GetMenuDescription();
+		}
+
+		const std::size_t first = m_Selected >= kOptionsPerPage ? m_Selected - kOptionsPerPage + 1 : 0;
+		const std::size_t last = std::min(first + kOptionsPerPage, entries.size());
+		for (std::size_t index = first; index < last; ++index)
+		{
+			const bool selected = index == m_Selected;
+			const ImU32 rowColor = selected ? Color(accent, 0.9f) : (index % 2 ? IM_COL32(11, 10, 9, 220) : IM_COL32(5, 5, 5, 215));
+			drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kOptionHeight), rowColor);
+			if (selected)
+				drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + 4.0f, y + kOptionHeight), white);
+			const float rightWidth = ImGui::CalcTextSize(entries[index].second.c_str()).x;
+			const float labelClipRight = std::max(kMenuX + 8.0f, kMenuX + kMenuWidth - rightWidth - 20.0f);
+			drawList->PushClipRect(ImVec2(kMenuX + 8.0f, y), ImVec2(labelClipRight, y + kOptionHeight), true);
+			DrawText(
+			    drawList, ImVec2(kMenuX + 10.0f, y + 7.0f), selected ? IM_COL32(10, 10, 10, 255) : white, entries[index].first);
+			drawList->PopClipRect();
+			DrawText(drawList,
+			    ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f),
+			    selected ? IM_COL32(10, 10, 10, 255) : white,
+			    entries[index].second);
+			y += kOptionHeight;
+		}
+
+		drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kFooterHeight), IM_COL32(12, 12, 12, 235));
+		DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 5.0f), IM_COL32(190, 190, 190, 255), "Setas: navegar e alterar");
+		DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 23.0f), IM_COL32(165, 165, 165, 255), "Enter: selecionar   Backspace: voltar");
+		y += kFooterHeight + 5.0f;
+		if (!description.empty())
+		{
+			drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kDescriptionHeight), IM_COL32(5, 5, 5, 210), 3.0f);
+			DrawWrappedText(drawList, ImVec2(kMenuX + 10.0f, y + 8.0f), IM_COL32(220, 214, 201, 255), description, kMenuWidth - 20.0f);
+			y += kDescriptionHeight;
+		}
+		drawList->AddRect(ImVec2(kMenuX, kMenuY), ImVec2(kMenuX + kMenuWidth, y), Color(accent, 0.55f), 4.0f, 0, 1.0f);
 
 		AdvancedEditor::Draw();
 	}
