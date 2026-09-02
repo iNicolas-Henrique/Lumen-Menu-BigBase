@@ -17,7 +17,7 @@ namespace YimMenu
 		if (!m_Name.empty())
 		{
 			ImGui::PushFont(Menu::Font::g_ChildTitleFont);
-			ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive), "%s", m_Name.c_str());
+			ImGui::Text(m_Name.c_str());
 			ImGui::PopFont();
 			ImGui::Separator();
 			ImGui::Spacing();
@@ -39,5 +39,12 @@ namespace YimMenu
 			}
 		}
 		ImGui::EndGroup();
+	}
+
+	void Group::CollectMenuItems(std::vector<UIItem*>& items)
+	{
+		for (const auto& item : m_Items)
+			if (item)
+				item->CollectMenuItems(items);
 	}
 }

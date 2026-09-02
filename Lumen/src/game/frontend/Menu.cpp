@@ -2,7 +2,6 @@
 
 #include "core/commands/Commands.hpp"
 #include "core/frontend/manager/UIManager.hpp"
-#include "core/frontend/theme/LumenTheme.hpp"
 #include "core/renderer/Renderer.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/ScriptMgr.hpp"
@@ -38,99 +37,12 @@ namespace YimMenu
 		UIManager::AddSubmenu(std::make_shared<Submenus::Debug>());
 
 		Renderer::AddRendererCallBack(
-		    [&] {
+		    [] {
 			    if (!GUI::IsOpen())
 				    return;
 
 			    ImGui::PushFont(Menu::Font::g_DefaultFont);
-			    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.4f));
-
-			    static bool firstFrame = true;
-			    static int lastPosX = g_SettingsInstance.GetWindowPosX();
-			    static int lastPosY = g_SettingsInstance.GetWindowPosY();
-			    static int lastWidth = g_SettingsInstance.GetWindowWidth();
-			    static int lastHeight = g_SettingsInstance.GetWindowHeight();
-			    static bool lastMaximized = g_SettingsInstance.IsWindowMaximized();
-
-			    int screenW = GetSystemMetrics(SM_CXSCREEN);
-			    int screenH = GetSystemMetrics(SM_CYSCREEN);
-			    const int minW = std::min(720, screenW), minH = std::min(480, screenH), maxW = screenW, maxH = screenH;
-			    int posX = std::clamp(g_SettingsInstance.GetWindowPosX(), 0, screenW - minW);
-			    int posY = std::clamp(g_SettingsInstance.GetWindowPosY(), 0, screenH - minH);
-			    int width = std::clamp(g_SettingsInstance.GetWindowWidth(), minW, maxW);
-			    int height = std::clamp(g_SettingsInstance.GetWindowHeight(), minH, maxH);
-
-			    if (firstFrame)
-			    {
-				    ImGui::SetNextWindowPos(ImVec2((float)posX, (float)posY), ImGuiCond_Once);
-				    ImGui::SetNextWindowSize(ImVec2((float)width, (float)height), ImGuiCond_Once);
-			    }
-
-			    ImGui::SetNextWindowSizeConstraints(ImVec2(static_cast<float>(minW), static_cast<float>(minH)), ImVec2(static_cast<float>(maxW), static_cast<float>(maxH)));
-			    const bool visible = ImGui::Begin("##Lumen", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoSavedSettings);
-			    if (visible)
-			    {
-				    ImDrawList* background = ImGui::GetWindowDrawList();
-				    const ImVec2 windowPos = ImGui::GetWindowPos();
-				    const ImVec2 windowSize = ImGui::GetWindowSize();
-				    LumenTheme::DrawWindowAtmosphere(background, windowPos, windowSize);
-
-				    const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
-				    const ImVec2 headerCursor = ImGui::GetCursorScreenPos();
-				    LumenTheme::DrawBrandMark(background, ImVec2(headerCursor.x + 14.0f, headerCursor.y + 14.0f), accent);
-				    ImGui::Dummy(ImVec2(34.0f, 28.0f));
-				    ImGui::SameLine();
-				    ImGui::BeginGroup();
-				    ImGui::TextColored(accent, "LUMEN");
-				    ImGui::TextDisabled("Menu de utilidades para Red Dead Redemption 2");
-				    ImGui::EndGroup();
-
-				    const float terminateWidth = 92.0f;
-				    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - terminateWidth));
-				    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.12f, 0.14f, 0.85f));
-				    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.68f, 0.18f, 0.21f, 1.0f));
-				    if (ImGui::Button("Encerrar", ImVec2(terminateWidth, 0)))
-				    {
-					    if (ScriptMgr::CanTick())
-					    {
-						    FiberPool::Push([] {
-							    Commands::Shutdown();
-							    g_Running = false;
-						    });
-					    }
-					    else
-					    {
-						    g_Running = false;
-					    }
-				    }
-				    ImGui::PopStyleColor(2);
-				    ImGui::Separator();
-
-				    UIManager::Draw();
-
-				    ImVec2 winPos = ImGui::GetWindowPos();
-				    ImVec2 winSize = ImGui::GetWindowSize();
-				    bool maximized = false;
-
-				    int curPosX = (int)winPos.x;
-				    int curPosY = (int)winPos.y;
-				    int curWidth = (int)winSize.x;
-				    int curHeight = (int)winSize.y;
-
-				    if (firstFrame || curPosX != lastPosX || curPosY != lastPosY || curWidth != lastWidth || curHeight != lastHeight || maximized != lastMaximized)
-				    {
-					    g_SettingsInstance.SaveIfWindowChanged(curWidth, curHeight, curPosX, curPosY, maximized);
-					    lastPosX = curPosX;
-					    lastPosY = curPosY;
-					    lastWidth = curWidth;
-					    lastHeight = curHeight;
-					    lastMaximized = maximized;
-				    }
-				    firstFrame = false;
-			    }
-			    ImGui::End();
-
-			    ImGui::PopStyleColor();
+			    UIManager::Render();
 			    ImGui::PopFont();
 		    },
 		    -1);
@@ -138,8 +50,21 @@ namespace YimMenu
 
 	void Menu::SetupStyle()
 	{
+		ImGuiStyle& style = ImGui::GetStyle();
+
+		style.WindowPadding = ImVec2(12.0f, 10.0f);
+		style.FramePadding = ImVec2(10.0f, 7.0f);
+		style.CellPadding = ImVec2(8.0f, 5.0f);
+		style.ItemSpacing = ImVec2(8.0f, 7.0f);
+		style.ItemInnerSpacing = ImVec2(7.0f, 5.0f);
+		style.ScrollbarSize = 12.0f;
+
 		YimMenu::Submenus::ApplyMenuColors();
-		LumenTheme::ApplyMetrics();
+
+		style.GrabRounding = style.FrameRounding = style.ChildRounding = style.WindowRounding = 6.0f;
+		style.PopupRounding = style.ScrollbarRounding = 6.0f;
+		style.WindowBorderSize = 1.0f;
+		style.ChildBorderSize = 1.0f;
 	}
 
 	void Menu::SetupFonts()

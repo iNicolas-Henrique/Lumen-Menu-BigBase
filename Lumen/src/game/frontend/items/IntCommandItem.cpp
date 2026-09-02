@@ -39,4 +39,26 @@ namespace YimMenu
 			}
 		}
 	}
+
+	std::string_view IntCommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string IntCommandItem::GetMenuValue() const
+	{
+		return m_Command ? std::to_string(m_Command->GetState()) : "";
+	}
+	std::string_view IntCommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
+	void IntCommandItem::HandleMenuAction(MenuAction action)
+	{
+		if (!m_Command || action == MenuAction::Enter)
+			return;
+		const int delta = action == MenuAction::Right ? 1 : -1;
+		const int minimum = m_Command->GetMinimum().value_or(INT_MIN);
+		const int maximum = m_Command->GetMaximum().value_or(INT_MAX);
+		m_Command->SetState(std::clamp(m_Command->GetState() + delta, minimum, maximum));
+	}
 }

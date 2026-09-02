@@ -1,7 +1,5 @@
 #include "Submenu.hpp"
 
-#include "core/frontend/theme/LumenTheme.hpp"
-
 namespace YimMenu
 {
 	void Submenu::SetActiveCategory(const std::shared_ptr<Category> category)
@@ -19,19 +17,26 @@ namespace YimMenu
 
 	void Submenu::DrawCategorySelectors()
 	{
-		const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
 		for (auto& category : m_Categories)
 		{
 			if (category)
 			{
-				const bool active = category == GetActiveCategory();
-				ImGui::PushStyleColor(ImGuiCol_Button, active ? LumenTheme::WithAlpha(accent, 0.78f) : LumenTheme::WithAlpha(ImGui::GetStyleColorVec4(ImGuiCol_FrameBg), 0.34f));
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, LumenTheme::WithAlpha(accent, 0.58f));
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, accent);
+				auto& style = ImGui::GetStyle();
+				auto color = style.Colors[ImGuiCol_Button];
+				color.w -= 0.5;
+
+				auto active = category == GetActiveCategory();
+
+				if (!active)
+					ImGui::PushStyleColor(ImGuiCol_Button, color);
 
 				if (ImGui::Button(category->m_Name.data(), ImVec2(category->GetLength(), 35)))
+				{
 					SetActiveCategory(category);
-				ImGui::PopStyleColor(3);
+				}
+
+				if (!active)
+					ImGui::PopStyleColor();
 
 				if (m_Categories.back() != category)
 					ImGui::SameLine();
