@@ -67,9 +67,10 @@ namespace YimMenu
 			ImGui::SameLine();
 			ImGui::BeginGroup();
 			ImGui::Text("Locations");
-			if (ImGui::BeginListBox("##saved_locs", {200, max_length})) 
+			if (ImGui::BeginListBox("##saved_locs", {200, max_length}))
 			{
-				if (SavedLocations::GetAllSavedLocations().find(m_CurrentCategory) != SavedLocations::GetAllSavedLocations().end())
+				if (SavedLocations::GetAllSavedLocations().find(m_CurrentCategory)
+				    != SavedLocations::GetAllSavedLocations().end())
 				{
 					std::vector<SavedLocation> current_list{};
 
@@ -116,5 +117,24 @@ namespace YimMenu
 		}
 
 		ImGui::PopID();
+	}
+
+	std::string_view Vector3CommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string Vector3CommandItem::GetMenuValue() const
+	{
+		if (!m_Command)
+			return {};
+		const auto value = m_Command->GetState();
+		return std::format("{:.0f}, {:.0f}, {:.0f}", value.x, value.y, value.z);
+	}
+	std::string_view Vector3CommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
+	void Vector3CommandItem::HandleMenuAction(MenuAction)
+	{
 	}
 }
