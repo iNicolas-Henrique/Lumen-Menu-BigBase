@@ -1,73 +1,145 @@
-<div align="center">
+# Lumen
 
-# ✦ L U M E N ✦
+**Lumen** é um mod menu para **Red Dead Redemption 2**, desenvolvido com foco em personalização, ferramentas de gameplay, interface moderna e recursos experimentais.
 
-### Um menu de ferramentas para Red Dead Redemption 2
-
-Interface compacta, navegação por teclado e recursos organizados para estudo, testes e personalização.
-
-</div>
+O projeto busca manter uma interface simples, organizada e leve, com suporte aos renderizadores utilizados pelo jogo.
 
 ---
 
-## O que é o Lumen?
+## Sobre
 
-O **Lumen** é um projeto independente e educacional em C++ para **Red Dead Redemption 2**. Ele reúne ferramentas de personagem, teleporte, mundo, jogadores, rede, configurações e depuração em um menu clássico, leve e acessível por teclado.
+O Lumen nasceu como um projeto de estudo e desenvolvimento em C++, com foco em aprender e experimentar diferentes áreas, como:
 
-O foco do projeto é aprender sobre interfaces, renderização, organização de software e integração com o jogo sem abandonar a clareza para quem apenas deseja entender e testar o menu.
+* Interface gráfica com ImGui
+* Renderização em Vulkan
+* Suporte a DirectX 12
+* Hooks e integração com o jogo
+* Organização de menus e submenus
+* Sistema de configurações
+* Desenvolvimento e manutenção de projetos em C++
 
-## Destaques
+O projeto ainda está em desenvolvimento, então algumas funções podem apresentar comportamentos inesperados dependendo da versão do jogo ou do hardware utilizado.
 
-- menu em português, compacto e adaptável à resolução;
-- navegação por teclado com **F5** ou **Insert** para abrir e fechar;
-- suporte aos renderizadores **Vulkan** e **DirectX 12**;
-- categorias para personagem, teleporte, rede, jogadores, mundo, recuperação, configurações e depuração;
-- sistema de comandos, atalhos, configurações persistentes e logs de diagnóstico;
-- proteções, ESP, notificações e ferramentas experimentais.
+---
+
+## Principais recursos
+
+* Interface própria do Lumen
+* Menu dividido em categorias
+* Navegação simples e organizada
+* Suporte a **Vulkan**
+* Suporte a **DirectX 12**
+* Compatibilidade melhorada com GPUs integradas
+* Salvamento de configurações
+* Sistema de comandos
+* Diversas opções de personalização
+* Ferramentas de gameplay
+* Recursos experimentais
+* Interface em português
+* Projeto desenvolvido em C++
+
+---
+
+## Abrindo o menu
+
+Por padrão, o menu pode ser aberto ou fechado utilizando:
+
+**F5** ou **INSERT**
+
+---
 
 ## Instalação
 
-1. Baixe uma versão publicada do Lumen.
-2. Extraia o conteúdo mantendo os arquivos do pacote juntos.
-3. Leia as observações da versão antes de utilizar `Lumen.dll`.
-4. Abra ou feche o menu com **F5** ou **Insert**, conforme a configuração escolhida.
+1. Baixe a versão mais recente do Lumen.
+2. Extraia o arquivo `.zip`.
+3. Leia os arquivos e instruções incluídos no pacote antes de utilizar.
+4. Mantenha os arquivos necessários juntos para evitar problemas de funcionamento.
+
+Caso esteja utilizando uma versão compilada, o arquivo principal será:
+
+`Lumen.dll`
+
+---
 
 ## Compilação
 
-O projeto utiliza CMake e foi preparado para Windows 64-bit:
+O projeto utiliza **CMake** e pode ser compilado utilizando Visual Studio Build Tools e Ninja.
+
+Exemplo:
 
 ```bat
-cmake -S Lumen -B Lumen/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build Lumen/build --config RelWithDebInfo --target Lumen
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake --build build --config RelWithDebInfo --target Lumen
 ```
 
-Dependências externas podem exigir acesso à internet durante a primeira configuração.
+Após a compilação, a DLL será gerada dentro da pasta `build`.
 
-## Relatórios de problemas
+---
 
-Ao relatar um problema, informe a resolução, versão do Windows, GPU, renderer utilizado, ação executada e anexe os logs disponíveis. Isso ajuda a distinguir erros do menu, do jogo, do driver e das dependências.
+## Compatibilidade
 
-## Créditos
+O Lumen foi desenvolvido pensando principalmente em sistemas Windows 64-bit.
 
-O Lumen existe graças ao trabalho e ao aprendizado proporcionados por projetos da comunidade:
+Renderizadores atualmente suportados:
 
-- **YimMenu** — arquitetura, padrões de comandos, proteções e base de conhecimento;
-- **HorseMenu** — referência no ecossistema de menus para Red Dead Redemption 2;
-- **BigBase** — referência para a navegação vertical clássica adotada pelo frontend;
-- **alloc8or RDR3 Native DB** e seus colaboradores — documentação das natives utilizadas pelo projeto.
+* Vulkan
+* DirectX 12
 
-Os créditos e avisos de terceiros também estão registrados em [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+A compatibilidade pode variar dependendo da versão do jogo, drivers de vídeo e hardware.
 
-## Uso responsável
+---
 
-Este software é fornecido para **fins educacionais, pesquisa e desenvolvimento**. O Lumen não possui vínculo com Rockstar Games ou Take-Two Interactive. Não utilize o projeto para prejudicar jogadores, interromper serviços ou violar leis e termos aplicáveis.
+## Problemas e sugestões
 
-O software é fornecido sem garantias. O usuário é responsável por seu uso, por seus dados e por eventuais consequências.
+Encontrou algum problema?
 
-<div align="center">
+Antes de abrir um relatório, tente informar:
+
+* O que aconteceu
+* O que você estava fazendo quando o problema apareceu
+* Sua versão do Windows
+* Sua GPU
+* Renderizador utilizado
+* Logs ou mensagens de erro, caso existam
+
+Quanto mais informações forem fornecidas, mais fácil será encontrar a causa.
+
+Sugestões e melhorias também são bem-vindas.
+
+---
+
+## Aviso
+
+O **Lumen** é um projeto independente criado para fins de estudo, pesquisa e desenvolvimento.
+
+O projeto não possui vínculo, patrocínio ou afiliação com **Rockstar Games** ou **Take-Two Interactive**.
+
+Red Dead Redemption, Red Dead Redemption 2, Red Dead Online, Rockstar Games e suas respectivas marcas pertencem aos seus proprietários.
+
+O projeto não incentiva ações destinadas a prejudicar outros jogadores, interromper serviços online ou causar danos a terceiros.
+
+Cada usuário é responsável pela forma como utiliza o software e pelo cumprimento das leis, regras e termos de serviço aplicáveis.
+
+---
+
+## Responsabilidade
+
+O software é fornecido **sem garantia**.
+
+O desenvolvedor não se responsabiliza por problemas, perda de dados, incompatibilidades, suspensões de conta ou quaisquer outras consequências relacionadas ao uso do projeto.
+
+Use por sua própria conta e risco.
+
+---
+
+## Desenvolvimento
+
+O Lumen continuará recebendo ajustes, correções e melhorias conforme o projeto evoluir.
+
+A prioridade é manter o código organizado, a interface funcional e melhorar a compatibilidade sem transformar o projeto em algo desnecessariamente pesado.
+
+---
 
 ### Lumen
 
-**Clareza, controle e aprendizado.**
-
-</div>
+**Mais controle. Menos limites.**

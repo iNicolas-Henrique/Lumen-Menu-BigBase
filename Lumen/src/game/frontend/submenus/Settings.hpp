@@ -1,6 +1,6 @@
 #pragma once
 #include "core/frontend/manager/UIManager.hpp"
-
+#include "core/commands/ColorCommand.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -45,4 +45,7 @@ namespace YimMenu::Submenus
 		std::string GetSettingsFilePath() const;
 	};
 
+	void ApplyMenuColors();
+	void ResetToDefaultColors();
+	void DrawColorSettings();
 }

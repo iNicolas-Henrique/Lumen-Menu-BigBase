@@ -3,9 +3,11 @@
 #include "core/commands/Commands.hpp"
 #include "core/commands/HotkeySystem.hpp"
 #include "core/commands/LoopedCommand.hpp"
+#include "core/commands/ColorCommand.hpp"
 #include "game/backend/Self.hpp"
 #include "game/features/Features.hpp"
 #include "game/frontend/items/Items.hpp"
+#include "MenuPreSets.hpp"
 #include <fstream>
 #include <filesystem>
 #include <Windows.h>
@@ -125,7 +127,215 @@ namespace YimMenu::Submenus
         }
     }
 
-    static BoolCommand g_UseInsertForMenuToggle("togglemenukey", "Tecla do menu", "Desativado = F5, ativado = Insert", false);
+
+    class MenuColorCommand : public ColorCommand
+    {
+    public:
+        using ColorCommand::ColorCommand;
+    protected:
+        void OnChange() override {}
+    };
+
+    static BoolCommand g_UseInsertForMenuToggle("togglemenukey", "Menu Toggle Key", "Un-Ticked = F5, Ticked = Insert", false);
+
+    // region Color Commands
+    static MenuColorCommand _MenuWindowBg("menu_window_bg", "Window Background", "", {0.07f, 0.10f, 0.12f, 0.0f});
+    static MenuColorCommand _MenuChildBg("menu_child_bg", "Child Background", "", {0.10f, 0.14f, 0.17f, 0.70f});
+    static MenuColorCommand _MenuPopupBg("menu_popup_bg", "Popup Background", "", {0.12f, 0.16f, 0.19f, 0.95f});
+    static MenuColorCommand _MenuTextColor("menu_text_color", "Text", "", {1.0f, 0.89f, 0.71f, 1.00f});
+    static MenuColorCommand _MenuTextDisabled("menu_text_disabled", "Text Disabled", "", {0.85f, 0.85f, 0.85f, 0.5f});
+    static MenuColorCommand _MenuTextSelectedBg("menu_text_selected_bg", "Text Selected BG", "", {1.0f, 1.0f, 0.0f, 0.5f});
+    static MenuColorCommand _MenuFrameBg("menu_frame_bg", "Frame Background", "", {0.27f, 0.51f, 0.71f, 0.3f});
+    static MenuColorCommand _MenuFrameBgHovered("menu_frame_bg_hovered", "Frame Background Hovered", "", {0.00f, 0.48f, 1.00f, 0.60f});
+    static MenuColorCommand _MenuFrameBgActive("menu_frame_bg_active", "Frame Background Active", "", {0.86f, 0.08f, 0.24f, 0.6f});
+    static MenuColorCommand _MenuBorderColor("menu_border_color", "Border", "", {0.28f, 0.28f, 0.28f, 0.25f});
+    static MenuColorCommand _MenuButton("menu_button", "Button", "", {0.27f, 0.51f, 0.71f, 0.6f});
+    static MenuColorCommand _MenuButtonHovered("menu_button_hovered", "Button Hovered", "", {0.72f, 0.53f, 0.04f, 0.8f});
+    static MenuColorCommand _MenuButtonActive("menu_button_active", "Button Active", "", {0.86f, 0.08f, 0.24f, 0.6f});
+    static MenuColorCommand _MenuTitleBg("menu_title_bg", "Title Background", "", {0.00f, 0.00f, 0.00f, 0.60f});
+    static MenuColorCommand _MenuTitleBgActive("menu_title_bg_active", "Title Background Active", "", {0.10f, 0.10f, 0.10f, 0.60f});
+    static MenuColorCommand _MenuTitleBgCollapsed("menu_title_bg_collapsed", "Title Background Collapsed", "", {0.00f, 0.00f, 0.00f, 0.60f});
+    static MenuColorCommand _MenuTab("menu_tab", "Tab", "", {0.13f, 0.13f, 0.13f, 0.60f});
+    static MenuColorCommand _MenuTabHovered("menu_tab_hovered", "Tab Hovered", "", {0.00f, 0.48f, 1.00f, 0.60f});
+    static MenuColorCommand _MenuTabActive("menu_tab_active", "Tab Active", "", {0.13f, 0.13f, 0.13f, 0.80f});
+    static MenuColorCommand _MenuHeader("menu_header", "Header", "", {0.13f, 0.13f, 0.13f, 0.60f});
+    static MenuColorCommand _MenuHeaderHovered("menu_header_hovered", "Header Hovered", "", {0.00f, 0.48f, 1.00f, 0.80f});
+    static MenuColorCommand _MenuHeaderActive("menu_header_active", "Header Active", "", {0.00f, 0.48f, 1.00f, 0.90f});
+    static MenuColorCommand _MenuPlotLines("menu_plot_lines", "Plot Lines", "", {0.80f, 0.80f, 0.00f, 0.00f});
+    static MenuColorCommand _MenuPlotLinesHovered("menu_plot_lines_hovered", "Plot Lines Hovered", "", {1.00f, 0.85f, 0.00f, 1.00f});
+    static MenuColorCommand _MenuPlotHistogram("menu_plot_histogram", "Plot Histogram", "", {0.90f, 0.70f, 0.20f, 1.00f});
+    static MenuColorCommand _MenuPlotHistogramHovered("menu_plot_histogram_hovered", "Plot Histogram Hovered", "", {1.00f, 0.80f, 0.40f, 1.00f});
+    static MenuColorCommand _MenuTabUnfocused("menu_tab_unfocused", "Tab Unfocused", "", {0.13f, 0.13f, 0.13f, 0.60f});
+    static MenuColorCommand _MenuTabUnfocusedActive("menu_tab_unfocused_active", "Tab Unfocused Active", "", {0.13f, 0.13f, 0.13f, 0.80f});
+    static MenuColorCommand _MenuMenuBarBg("menu_menubar_bg", "MenuBar Background", "", {0.10f, 0.10f, 0.10f, 0.60f});
+    static MenuColorCommand _MenuScrollbarBg("menu_scrollbar_bg", "Scrollbar Background", "", {0.0f, 0.0f, 0.0f, 0.0f});
+    static MenuColorCommand _MenuScrollbarGrab("menu_scrollbar_grab", "Scrollbar Grab", "", {0.27f, 0.51f, 0.71f, 0.6f});
+    static MenuColorCommand _MenuScrollbarGrabHovered("menu_scrollbar_grab_hovered", "Scrollbar Grab Hovered", "", {0.72f, 0.53f, 0.04f, 0.8f});
+    static MenuColorCommand _MenuScrollbarGrabActive("menu_scrollbar_grab_active", "Scrollbar Grab Active", "", {0.86f, 0.08f, 0.24f, 0.6f});
+    static MenuColorCommand _MenuCheckMark("menu_checkmark", "CheckMark", "", {1.0f, 0.89f, 0.71f, 1.00f});
+    static MenuColorCommand _MenuSliderGrab("menu_slider_grab", "Slider Grab", "", {0.27f, 0.51f, 0.71f, 0.6f});
+    static MenuColorCommand _MenuSliderGrabActive("menu_slider_grab_active", "Slider Grab Active", "", {0.86f, 0.08f, 0.24f, 0.6f});
+    static MenuColorCommand _MenuSeparator("menu_separator", "Separator", "", {0.28f, 0.28f, 0.28f, 0.25f});
+    static MenuColorCommand _MenuResizeGrip("menu_resize_grip", "Resize Grip", "", {0.27f, 0.51f, 0.71f, 0.6f});
+    static MenuColorCommand _MenuResizeGripHovered("menu_resize_grip_hovered", "Resize Grip Hovered", "", {0.72f, 0.53f, 0.04f, 0.8f});
+    static MenuColorCommand _MenuResizeGripActive("menu_resize_grip_active", "Resize Grip Active", "", {0.86f, 0.08f, 0.24f, 0.6f});
+    // endregion
+
+    void ApplyAggressivePadding()
+    {
+        ImGuiStyle baseStyle; 
+        auto& style = ImGui::GetStyle();
+
+        style.FramePadding     = ImVec2(baseStyle.FramePadding.x * 0.5f, baseStyle.FramePadding.y * 0.4f);
+        style.CellPadding      = ImVec2(baseStyle.CellPadding.x * 0.6f, baseStyle.CellPadding.y * 0.2f);
+        style.ItemSpacing      = ImVec2(baseStyle.ItemSpacing.x * 0.5f, baseStyle.ItemSpacing.y * 0.3f);
+        style.ItemInnerSpacing = ImVec2(baseStyle.ItemInnerSpacing.x * 0.5f, baseStyle.ItemInnerSpacing.y * 0.5f);
+        style.WindowPadding    = ImVec2(baseStyle.WindowPadding.x * 0.5f, baseStyle.WindowPadding.y * 0.4f);
+    }
+
+    void ApplyMenuColors()
+    {
+        auto& style = ImGui::GetStyle();
+        for (const auto& [col, name] : Themes::ImGuiCol_to_CommandName)
+        {
+            if (auto cmd = Commands::GetCommand<ColorCommand>(name))
+            {
+                style.Colors[col] = cmd->GetState();
+            }
+        }
+    }
+    
+    void ApplyTheme(const Themes::ThemePreset& theme)
+    {
+        for (const auto& [col, vec] : theme.m_Colors)
+        {
+            if (auto it = Themes::ImGuiCol_to_CommandName.find(col); it != Themes::ImGuiCol_to_CommandName.end())
+            {
+                if (auto cmd = Commands::GetCommand<ColorCommand>(it->second))
+                {
+                    cmd->SetState(vec);
+                }
+            }
+        }
+        ApplyMenuColors();
+    }
+
+    void ResetToDefaultColors()
+    {
+        for (const auto& theme : Themes::GetThemePresets())
+        {
+            if (theme.m_Name == "Clear Blue")
+            {
+                ApplyTheme(theme);
+                ApplyAggressivePadding();
+                return;
+            }
+        }
+    }
+
+    void DrawColorSettings()
+    {
+        ImGui::TextUnformatted("Preset Themes");
+        ImGui::Separator();
+        const auto& presets = Themes::GetThemePresets();
+        int buttons_per_row = 6; 
+
+        for (int i = 0; i < presets.size(); ++i)
+        {
+            const auto& preset = presets[i];
+            ImGui::PushID(preset.m_Name.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Button, preset.m_PreviewColor);
+
+            if (ImGui::Button("  ", {40, 20}))
+            {
+                ApplyTheme(preset);
+                ApplyAggressivePadding(); 
+            }
+
+            ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("%s", preset.m_Name.c_str());
+            }
+
+            if ((i + 1) % buttons_per_row != 0 && (i + 1) < presets.size())
+            {
+                ImGui::SameLine();
+            }
+
+            ImGui::PopID();
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Reset to default theme"))
+        {
+            ResetToDefaultColors();
+        }
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextUnformatted("Custom Color Editor");
+        ImGui::Separator();
+
+        auto DrawColorGroup = [](const char* title, std::initializer_list<joaat_t> hashes) {
+            ImGui::TextUnformatted(title);
+            ImGui::Separator();
+            ImGui::BeginGroup();
+            constexpr int columns = 4;
+            int count = 0;
+            for (const auto& hash : hashes)
+            {
+                if (auto cmd = Commands::GetCommand<ColorCommand>(hash))
+                {
+                    ImGui::PushID(cmd->GetHash());
+                    
+                    ImVec4 color = cmd->GetState();
+                    if (ImGui::ColorEdit4("##picker", &color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+                    {
+                        cmd->SetState(color);
+                        ApplyMenuColors();
+                    }
+
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip("%s", cmd->GetLabel().c_str());
+                    }
+
+                    ImGui::PopID();
+                    
+                    if ((count + 1) % columns != 0 && (count + 1) < hashes.size())
+                    {
+                         ImGui::SameLine();
+                    }
+                }
+                count++;
+            }
+            ImGui::EndGroup();
+            ImGui::Spacing();
+        };
+
+        ImGui::BeginGroup();
+        DrawColorGroup("Backgrounds", {"menu_window_bg"_J, "menu_child_bg"_J, "menu_popup_bg"_J, "menu_menubar_bg"_J});
+        DrawColorGroup("Frames & Borders", {"menu_frame_bg"_J, "menu_frame_bg_hovered"_J, "menu_frame_bg_active"_J, "menu_border_color"_J});
+        DrawColorGroup("Title Bar", {"menu_title_bg"_J, "menu_title_bg_active"_J, "menu_title_bg_collapsed"_J});
+        ImGui::EndGroup();
+
+        ImGui::SameLine(0.0f, 15.0f);
+
+        ImGui::BeginGroup();
+        DrawColorGroup("Text", {"menu_text_color"_J, "menu_text_disabled"_J, "menu_text_selected_bg"_J, "menu_checkmark"_J});
+        DrawColorGroup("Tabs", {"menu_tab"_J, "menu_tab_hovered"_J, "menu_tab_active"_J, "menu_tab_unfocused"_J});
+        DrawColorGroup("Sliders & Grips", {"menu_slider_grab"_J, "menu_slider_grab_active"_J, "menu_resize_grip"_J, "menu_resize_grip_hovered"_J});
+        ImGui::EndGroup();
+
+        ImGui::SameLine(0.0f, 15.0f);
+        
+        ImGui::BeginGroup();
+        DrawColorGroup("Plots", {"menu_plot_lines"_J, "menu_plot_lines_hovered"_J, "menu_plot_histogram"_J, "menu_plot_histogram_hovered"_J});
+        DrawColorGroup("Scrollbar", {"menu_scrollbar_bg"_J, "menu_scrollbar_grab"_J, "menu_scrollbar_grab_hovered"_J, "menu_scrollbar_grab_active"_J});
+        DrawColorGroup("Buttons", {"menu_button"_J, "menu_button_hovered"_J, "menu_button_active"_J});
+        ImGui::EndGroup();
+    }
 
     static void DrawHotkeySettings()
     {
@@ -162,6 +372,7 @@ namespace YimMenu::Submenus
         auto overlay           = std::make_shared<Group>("Overlay");
         auto context           = std::make_shared<Group>("Context Menu");
         auto misc              = std::make_shared<Group>("Misc");
+        auto menuTheme         = std::make_shared<Group>("Menu Theme");
 
         hotkeys->AddItem(std::make_shared<ImGuiItem>(DrawHotkeySettings));
 
@@ -204,6 +415,7 @@ namespace YimMenu::Submenus
         context->AddItem(std::make_shared<ConditionalItem>("ctxmenu"_J, std::make_shared<BoolCommandItem>("ctxmenuvehicles"_J, "Vehicles")));
         context->AddItem(std::make_shared<ConditionalItem>("ctxmenu"_J, std::make_shared<BoolCommandItem>("ctxmenuobjects"_J, "Objects")));
 
+        menuTheme->AddItem(std::make_shared<ImGuiItem>(DrawColorSettings));
 
         misc->AddItem(std::make_shared<BoolCommandItem>("togglemenukey"_J));
 
@@ -233,6 +445,7 @@ namespace YimMenu::Submenus
         gui->AddItem(overlay);
         gui->AddItem(context);
         gui->AddItem(misc);
+        gui->AddItem(menuTheme);
 
         protections->AddItem(syncGroup);
         protections->AddItem(networkEventGroup);
