@@ -1,7 +1,7 @@
 #pragma once
 #include "core/frontend/manager/UIItem.hpp"
-#include "util/Joaat.hpp"
 #include "game/frontend/GUI.hpp"
+#include "util/Joaat.hpp"
 
 namespace YimMenu
 {
@@ -20,6 +20,15 @@ namespace YimMenu
 	public:
 		explicit Button(const std::string_view& Name, std::function<void()> OnClick, ImVec2 size = {0, 25}, const std::string_view& information = "Empty");
 		void Draw() override;
+		std::string_view GetMenuLabel() const override
+		{
+			return m_Name;
+		}
+		std::string_view GetMenuDescription() const override
+		{
+			return m_Information;
+		}
+		void HandleMenuAction(MenuAction action) override;
 
 	private:
 		std::string_view m_Name;
@@ -33,6 +42,9 @@ namespace YimMenu
 	public:
 		explicit CommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
 
 	private:
 		Command* m_Command;
@@ -44,6 +56,9 @@ namespace YimMenu
 	public:
 		explicit PlayerCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
 
 	private:
 		PlayerCommand* m_Command;
@@ -55,6 +70,10 @@ namespace YimMenu
 	public:
 		explicit BoolCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
 
 	private:
 		BoolCommand* m_Command;
@@ -66,6 +85,14 @@ namespace YimMenu
 	public:
 		explicit IntCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
+		bool RequiresImGuiEditor() const override
+		{
+			return true;
+		}
 
 	private:
 		IntCommand* m_Command;
@@ -77,6 +104,10 @@ namespace YimMenu
 	public:
 		explicit FloatCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
 
 	private:
 		FloatCommand* m_Command;
@@ -88,6 +119,14 @@ namespace YimMenu
 	public:
 		explicit Vector3CommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
+		bool RequiresImGuiEditor() const override
+		{
+			return true;
+		}
 
 	private:
 		Vector3Command* m_Command;
@@ -101,6 +140,10 @@ namespace YimMenu
 	public:
 		explicit ListCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override;
+		std::string_view GetMenuDescription() const override;
+		void HandleMenuAction(MenuAction action) override;
 
 	private:
 		ListCommand* m_Command;
@@ -114,6 +157,8 @@ namespace YimMenu
 	public:
 		explicit ConditionalItem(joaat_t bool_cmd_id, std::shared_ptr<UIItem> to_draw);
 		void Draw() override;
+		bool IsVisible() const override;
+		void CollectMenuItems(std::vector<UIItem*>& items) override;
 
 	private:
 		BoolCommand* m_Condition;
@@ -123,17 +168,30 @@ namespace YimMenu
 	class ImGuiItem : public UIItem
 	{
 	public:
-		explicit ImGuiItem(std::function<void()> callback);
+		explicit ImGuiItem(std::function<void()> callback, std::string label = "Ferramenta avancada", std::string description = {});
 		void Draw() override;
+		std::string_view GetMenuLabel() const override
+		{
+			return m_Label;
+		}
+		std::string_view GetMenuDescription() const override
+		{
+			return m_Description;
+		}
+		bool RequiresImGuiEditor() const override
+		{
+			return true;
+		}
 
 	private:
 		std::function<void()> m_Callback;
+		std::string m_Label;
+		std::string m_Description;
 	};
 
 	class HotkeySetter : public UIItem
 	{
 	public:
-
 		explicit HotkeySetter(joaat_t);
 		void Draw() override;
 
@@ -146,7 +204,12 @@ namespace YimMenu
 	public:
 		explicit Group(const std::string& name, int items_per_row = 7);
 		void Draw() override;
-		
+		std::string_view GetMenuLabel() const override
+		{
+			return m_Name;
+		}
+		void CollectMenuItems(std::vector<UIItem*>& items) override;
+
 		void AddItem(std::shared_ptr<UIItem>&& item)
 		{
 			m_Items.push_back(std::move(item));
@@ -163,6 +226,14 @@ namespace YimMenu
 	public:
 		explicit InputTextWithHint(std::string label, std::string hint, std::string* buf, int flags = ImGuiInputTextFlags_None, std::function<void()> cb = nullptr, ImGuiInputTextCallback inputCallback = nullptr);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override
+		{
+			return m_Id;
+		}
+		bool RequiresImGuiEditor() const override
+		{
+			return true;
+		}
 
 	private:
 		std::string m_Id;
@@ -178,6 +249,16 @@ namespace YimMenu
 	public:
 		explicit ColorCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override
+		{
+			return "EDITAR";
+		}
+		std::string_view GetMenuDescription() const override;
+		bool RequiresImGuiEditor() const override
+		{
+			return true;
+		}
 
 	private:
 		ColorCommand* m_Command;
@@ -189,6 +270,13 @@ namespace YimMenu
 	public:
 		explicit StringCommandItem(joaat_t id, std::optional<std::string> label_override = std::nullopt);
 		void Draw() override;
+		std::string_view GetMenuLabel() const override;
+		std::string GetMenuValue() const override;
+		std::string_view GetMenuDescription() const override;
+		bool RequiresImGuiEditor() const override
+		{
+			return true;
+		}
 
 	private:
 		StringCommand* m_Command;

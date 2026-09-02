@@ -15,9 +15,10 @@ namespace YimMenu
 			return {};
 
 		auto message_id = Joaat(title + message);
+		std::lock_guard<std::mutex> lock(m_mutex);
 
 		auto exists = std::find_if(m_Notifications.begin(), m_Notifications.end(), [&](auto& notification) {
-			return notification.second.m_Identifier	== message_id;
+			return notification.second.m_Identifier == message_id;
 		});
 
 		if (exists != m_Notifications.end())
@@ -27,11 +28,11 @@ namespace YimMenu
 		}
 
 		Notification notification{};
-		notification.m_Title      = title;
-		notification.m_Message    = message;
-		notification.m_Type       = type;
+		notification.m_Title = title;
+		notification.m_Message = message;
+		notification.m_Type = type;
 		notification.m_CreatedOn = std::chrono::system_clock::now();
-		notification.m_Duration   = duration;
+		notification.m_Duration = duration;
 		notification.m_Identifier = message_id;
 
 		if (context_function)
@@ -40,7 +41,6 @@ namespace YimMenu
 			notification.m_ContextFuncName = context_function_name.empty() ? "Context Function" : context_function_name;
 		}
 
-		std::lock_guard<std::mutex> lock(m_mutex);
 		auto result = m_Notifications.insert(std::make_pair(title + message, notification));
 
 		return notification;
@@ -73,7 +73,9 @@ namespace YimMenu
 		std::string windowTitle = std::to_string(position);
 		ImGui::Begin(windowTitle.c_str(), nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoFocusOnAppearing);
 
-		auto timeElapsed = (float)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - notification.m_CreatedOn).count();
+		auto timeElapsed =
+		    (float)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - notification.m_CreatedOn)
+		        .count();
 
 		auto depletionProgress = 1.0f - (timeElapsed / (float)notification.m_Duration);
 
@@ -147,7 +149,10 @@ namespace YimMenu
 				}
 
 
-				if ((float)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - notification.m_CreatedOn).count() >= notification.m_Duration)
+				if ((float)std::chrono::duration_cast<std::chrono::milliseconds>(
+				        std::chrono::system_clock::now() - notification.m_CreatedOn)
+				        .count()
+				    >= notification.m_Duration)
 					keys_to_erase.push_back(id);
 
 				position++;

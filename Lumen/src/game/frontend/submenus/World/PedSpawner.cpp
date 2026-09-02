@@ -2839,6 +2839,7 @@ static void ApplyBodyGuardSettings(YimMenu::Ped& ped)
             for (const auto& [modelKey, preset] : legendaryPresets)
             {
                 std::string displayModel = modelKey;
+				std::string selectedModel = modelKey;
                 for (const auto& [hash, pedModel] : Data::g_PedModels)
                 {
                     if (!pedModel) continue;
@@ -2847,14 +2848,15 @@ static void ApplyBodyGuardSettings(YimMenu::Ped& ped)
                     pedModelLower.erase(std::remove_if(pedModelLower.begin(), pedModelLower.end(), ::isspace), pedModelLower.end());
                     if (pedModelLower == modelKey)
                     {
-                        displayModel = pedModel;
+						displayModel = Data::GetPedDisplayName(pedModel);
+						selectedModel = pedModel;
                         break;
                     }
                 }
 
                 if (ImGui::Selectable(displayModel.c_str()))
                 {
-                    pedModelBuffer = displayModel;
+					pedModelBuffer = selectedModel;
                     hashInputBuffer.clear();
                     selectedOutfitPreset = preset;
                 }
@@ -2892,7 +2894,9 @@ static void ApplyBodyGuardSettings(YimMenu::Ped& ped)
                 std::transform(pedModelLower.begin(), pedModelLower.end(), pedModelLower.begin(), ::tolower);
                 if (pedModelLower.find(bufferLower) != std::string::npos)
                 {
-                    if (ImGui::Selectable(model))
+					const std::string displayName = Data::GetPedDisplayName(model);
+					const std::string selectableLabel = displayName + "##" + model;
+					if (ImGui::Selectable(selectableLabel.c_str()))
                     {
                         pedModelBuffer = model;
                         hashInputBuffer.clear();
@@ -3214,7 +3218,7 @@ static void ApplyBodyGuardSettings(YimMenu::Ped& ped)
                 {
                     const char* modelName = Data::g_PedModels.at(last.modelHash);
                     if (modelName)
-                        displayName = modelName;
+						displayName = Data::GetPedDisplayName(modelName);
                     else
                     {
                         char hexBuffer[16];

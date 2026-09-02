@@ -1,6 +1,6 @@
 #include "Items.hpp"
-#include "core/commands/Commands.hpp"
 #include "core/commands/Command.hpp"
+#include "core/commands/Commands.hpp"
 #include "core/commands/LoopedCommand.hpp"
 #include "core/frontend/widgets/toggle/imgui_toggle.hpp"
 
@@ -44,12 +44,30 @@ namespace YimMenu
 
 			HotkeySetter(m_Command->GetHash()).Draw();
 
-			
+
 			ImGui::Spacing();
 			if (ImGui::Button("Close") || ((!ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
 				ImGui::CloseCurrentPopup();
 
 			ImGui::EndPopup();
 		}
+	}
+
+	std::string_view BoolCommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string BoolCommandItem::GetMenuValue() const
+	{
+		return m_Command && m_Command->GetState() ? "ATIVADO" : "DESATIVADO";
+	}
+	std::string_view BoolCommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
+	void BoolCommandItem::HandleMenuAction(MenuAction action)
+	{
+		if (m_Command && (action == MenuAction::Enter || action == MenuAction::Left || action == MenuAction::Right))
+			m_Command->SetState(!m_Command->GetState());
 	}
 }

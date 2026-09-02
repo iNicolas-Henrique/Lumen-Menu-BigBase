@@ -1,32 +1,33 @@
 #include "Self.hpp"
 
-#include "game/features/self/GiveAllFunctions.hpp"
 #include "core/commands/BoolCommand.hpp"
 #include "core/commands/Commands.hpp"
 #include "core/commands/IntCommand.hpp"
+#include "game/backend/AnimationDict.hpp"
 #include "game/backend/FiberPool.hpp"
+#include "game/backend/MusicDict.hpp"
 #include "game/backend/Players.hpp"
 #include "game/backend/ScriptMgr.hpp"
 #include "game/backend/Self.hpp"
 #include "game/features/Features.hpp"
+#include "game/features/self/GiveAllFunctions.hpp"
+#include "game/features/self/ScenarioPlayer.hpp"
 #include "game/frontend/items/Items.hpp"
 #include "game/rdr/Natives.hpp"
 #include "game/rdr/data/Emotes.hpp"
 #include "util/Rewards.hpp"
-#include "game/backend/AnimationDict.hpp"
-#include "game/backend/MusicDict.hpp"
-#include "game/features/self/ScenarioPlayer.hpp"
-#include <map>
-#include <fstream>
-#include <cstring>
+
 #include <algorithm>
-#include <vector>
-#include <string>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <map>
 #include <optional>
 #include <set>
-#include <cstdlib>
-#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace YimMenu::Features
 {
@@ -61,13 +62,15 @@ namespace YimMenu::Submenus
 	static void LoadAnimationHistory()
 	{
 		std::ifstream in(GetLumenRoamingPath("animation_history.txt"));
-		if (!in.is_open()) return;
+		if (!in.is_open())
+			return;
 		lastPlayedAnimations.clear();
 		std::string dict, anim;
 		while (std::getline(in, dict) && std::getline(in, anim))
 		{
 			lastPlayedAnimations.emplace_back(dict, anim);
-			if (lastPlayedAnimations.size() >= 10) break;
+			if (lastPlayedAnimations.size() >= 10)
+				break;
 		}
 		in.close();
 	}
@@ -83,7 +86,8 @@ namespace YimMenu::Submenus
 	static void LoadFavoriteAnimations()
 	{
 		std::ifstream in(GetLumenRoamingPath("animation_favorites.txt"));
-		if (!in.is_open()) return;
+		if (!in.is_open())
+			return;
 		favoriteAnimations.clear();
 		std::string dict, anim;
 		while (std::getline(in, dict) && std::getline(in, anim))
@@ -102,14 +106,16 @@ namespace YimMenu::Submenus
 	static void LoadMusicHistory()
 	{
 		std::ifstream in(GetLumenRoamingPath("music_history.txt"));
-		if (!in.is_open()) return;
+		if (!in.is_open())
+			return;
 		lastPlayedMusics.clear();
 		std::string music;
 		while (std::getline(in, music))
 		{
 			if (!music.empty())
 				lastPlayedMusics.push_back(music);
-			if (lastPlayedMusics.size() >= 10) break;
+			if (lastPlayedMusics.size() >= 10)
+				break;
 		}
 		in.close();
 	}
@@ -125,11 +131,13 @@ namespace YimMenu::Submenus
 	static void LoadFavoriteMusics()
 	{
 		std::ifstream in(GetLumenRoamingPath("music_favorites.txt"));
-		if (!in.is_open()) return;
+		if (!in.is_open())
+			return;
 		favoriteMusics.clear();
 		std::string music;
 		while (std::getline(in, music))
-			if (!music.empty()) favoriteMusics.insert(music);
+			if (!music.empty())
+				favoriteMusics.insert(music);
 		in.close();
 	}
 
@@ -217,13 +225,15 @@ namespace YimMenu::Submenus
 			if (!dictFilterStr.empty())
 			{
 				std::string filterLower = dictFilterStr;
-				std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(),
-					[](unsigned char c) { return std::tolower(c); });
+				std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), [](unsigned char c) {
+					return std::tolower(c);
+				});
 				for (const auto& [dictName, anims] : allDicts)
 				{
 					std::string dictNameLower = dictName;
-					std::transform(dictNameLower.begin(), dictNameLower.end(), dictNameLower.begin(),
-						[](unsigned char c) { return std::tolower(c); });
+					std::transform(dictNameLower.begin(), dictNameLower.end(), dictNameLower.begin(), [](unsigned char c) {
+						return std::tolower(c);
+					});
 					if (dictNameLower.find(filterLower) != std::string::npos)
 						filteredDicts.push_back(dictName);
 				}
@@ -374,7 +384,8 @@ namespace YimMenu::Submenus
 					{
 						favoriteAnimations.erase(fav);
 						SaveFavoriteAnimations();
-						if (favAnimIndex == i) favAnimIndex = -1;
+						if (favAnimIndex == i)
+							favAnimIndex = -1;
 						break;
 					}
 					if (isSelected)
@@ -468,21 +479,26 @@ namespace YimMenu::Submenus
 					Emote::selectedEmoteCategoryIndex = i;
 					Emote::selectedEmoteMemberIndex = 0;
 				}
-				if (isSelected) ImGui::SetItemDefaultFocus();
+				if (isSelected)
+					ImGui::SetItemDefaultFocus();
 			}
 			ImGui::EndCombo();
 		}
 
 		ImGui::Text("Emote");
-		if (ImGui::BeginCombo("##Emote", Emote::emoteCategoryMembers[Emote::selectedEmoteCategoryIndex][Emote::selectedEmoteMemberIndex].name))
+		if (ImGui::BeginCombo("##Emote",
+		        Emote::emoteCategoryMembers[Emote::selectedEmoteCategoryIndex][Emote::selectedEmoteMemberIndex].name))
 		{
 			for (int i = 0; i < Emote::maxEmotesPerCategory; i++)
 			{
 				const auto& emote = Emote::emoteCategoryMembers[Emote::selectedEmoteCategoryIndex][i];
-				if (emote.name == nullptr) break;
+				if (emote.name == nullptr)
+					break;
 				bool isSelected = (i == Emote::selectedEmoteMemberIndex);
-				if (ImGui::Selectable(emote.name, isSelected)) Emote::selectedEmoteMemberIndex = i;
-				if (isSelected) ImGui::SetItemDefaultFocus();
+				if (ImGui::Selectable(emote.name, isSelected))
+					Emote::selectedEmoteMemberIndex = i;
+				if (isSelected)
+					ImGui::SetItemDefaultFocus();
 			}
 			ImGui::EndCombo();
 		}
@@ -495,13 +511,21 @@ namespace YimMenu::Submenus
 					int selectedCategoryIndex = Emote::selectedEmoteCategoryIndex;
 					int selectedEmoteIndex = Emote::selectedEmoteMemberIndex;
 					const Emote::EmoteItemData& selectedEmote = Emote::emoteCategoryMembers[selectedCategoryIndex][selectedEmoteIndex];
-					TASK::TASK_PLAY_EMOTE_WITH_HASH(YimMenu::Self::GetPed().GetHandle(), static_cast<int>(selectedEmote.type), EMOTE_PM_FULLBODY, static_cast<Hash>(selectedEmote.hash), false, false, false, false, false);
+					TASK::TASK_PLAY_EMOTE_WITH_HASH(YimMenu::Self::GetPed().GetHandle(),
+					    static_cast<int>(selectedEmote.type),
+					    EMOTE_PM_FULLBODY,
+					    static_cast<Hash>(selectedEmote.hash),
+					    false,
+					    false,
+					    false,
+					    false,
+					    false);
 				});
 			}
 		}
 
 		ImGui::Separator();
-		ImGui::Text("Music Dictionary");
+		ImGui::Text("Biblioteca de musicas");
 
 		static char musicDictFilterBuf[128] = {};
 		static std::string music_event;
@@ -515,20 +539,22 @@ namespace YimMenu::Submenus
 		musicBuf[sizeof(musicBuf) - 1] = '\0';
 
 		ImGui::SetNextItemWidth(250.0f);
-		ImGui::InputTextWithHint("##MusicDictFilter", "Filter Music Dictionary", musicDictFilterBuf, sizeof(musicDictFilterBuf));
+		ImGui::InputTextWithHint("##MusicDictFilter", "Filtrar musicas", musicDictFilterBuf, sizeof(musicDictFilterBuf));
 		std::string musicDictFilterStr = musicDictFilterBuf;
 
 		std::vector<std::string> filteredMusicDict;
 		if (!musicDictFilterStr.empty())
 		{
 			std::string filterLower = musicDictFilterStr;
-			std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(),
-				[](unsigned char c) { return std::tolower(c); });
+			std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), [](unsigned char c) {
+				return std::tolower(c);
+			});
 			for (const auto& entry : musicDict)
 			{
-				std::string entryLower = entry;
-				std::transform(entryLower.begin(), entryLower.end(), entryLower.begin(),
-					[](unsigned char c) { return std::tolower(c); });
+				std::string entryLower = entry + " " + MusicDict::GetDisplayName(entry);
+				std::transform(entryLower.begin(), entryLower.end(), entryLower.begin(), [](unsigned char c) {
+					return std::tolower(c);
+				});
 				if (entryLower.find(filterLower) != std::string::npos)
 					filteredMusicDict.push_back(entry);
 			}
@@ -538,14 +564,16 @@ namespace YimMenu::Submenus
 			filteredMusicDict = musicDict;
 		}
 
-		std::string musicComboPreviewValue = music_event.empty() ? "Select Music" : music_event;
+		std::string musicComboPreviewValue = music_event.empty() ? "Selecionar musica" : MusicDict::GetDisplayName(music_event);
 
 		if (ImGui::BeginCombo("##MusicDictionaryCombo", musicComboPreviewValue.c_str()))
 		{
 			for (const auto& musicName : filteredMusicDict)
 			{
 				bool isSelected = (music_event == musicName);
-				if (ImGui::Selectable(musicName.c_str(), isSelected))
+				const std::string displayName = MusicDict::GetDisplayName(musicName);
+				const std::string label = displayName + "##" + musicName;
+				if (ImGui::Selectable(label.c_str(), isSelected))
 				{
 					music_event = musicName;
 					std::strncpy(musicBuf, music_event.c_str(), sizeof(musicBuf));
@@ -557,7 +585,7 @@ namespace YimMenu::Submenus
 			}
 			ImGui::EndCombo();
 		}
-		if (ImGui::InputText("Music", musicBuf, sizeof(musicBuf), ImGuiInputTextFlags_AutoSelectAll))
+		if (ImGui::InputText("Evento da musica", musicBuf, sizeof(musicBuf), ImGuiInputTextFlags_AutoSelectAll))
 		{
 			music_event = musicBuf;
 		}
@@ -567,8 +595,8 @@ namespace YimMenu::Submenus
 			musicBuf[sizeof(musicBuf) - 1] = '\0';
 		}
 
-		ImGui::Text("Play");
-		ImGui::Checkbox("Loop Music", &loopMusic);
+		ImGui::Text("Reproducao");
+		ImGui::Checkbox("Repetir musica", &loopMusic);
 		if (!isMusicLooping && loopMusic && !music_event.empty())
 		{
 			isMusicLooping = true;
@@ -583,7 +611,7 @@ namespace YimMenu::Submenus
 			isMusicLooping = false;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Play"))
+		if (ImGui::Button("Tocar"))
 		{
 			if (!music_event.empty())
 			{
@@ -601,7 +629,7 @@ namespace YimMenu::Submenus
 			}
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Stop"))
+		if (ImGui::Button("Parar"))
 		{
 			loopMusic = false;
 			isMusicLooping = false;
@@ -616,7 +644,7 @@ namespace YimMenu::Submenus
 		{
 			if (!musicIsFav)
 			{
-				if (ImGui::Button("Mark Favorite"))
+				if (ImGui::Button("Adicionar aos favoritos"))
 				{
 					favoriteMusics.insert(music_event);
 					SaveFavoriteMusics();
@@ -625,17 +653,18 @@ namespace YimMenu::Submenus
 			}
 			else
 			{
-				if (ImGui::Button("Unmark Favorite"))
+				if (ImGui::Button("Remover dos favoritos"))
 				{
 					favoriteMusics.erase(music_event);
 					SaveFavoriteMusics();
 					std::ofstream out(GetLumenRoamingPath("music_favorites.txt"), std::ios::trunc);
-					for (const auto& music : favoriteMusics) out << music << "\n";
+					for (const auto& music : favoriteMusics)
+						out << music << "\n";
 					out.close();
 				}
 				ImGui::SameLine();
 			}
-			if (ImGui::Button("Clear Favorite List"))
+			if (ImGui::Button("Limpar favoritos"))
 			{
 				favoriteMusics.clear();
 				SaveFavoriteMusics();
@@ -645,17 +674,20 @@ namespace YimMenu::Submenus
 		}
 		if (!favoriteMusics.empty())
 		{
-			ImGui::Text("Favorite Music:");
+			ImGui::Text("Musicas favoritas:");
 			static int favMusicIndex = -1;
 			std::vector<std::string> favMusicLabels(favoriteMusics.begin(), favoriteMusics.end());
-			const char* preview = (favMusicIndex >= 0 && favMusicIndex < (int)favMusicLabels.size()) ? favMusicLabels[favMusicIndex].c_str() : "Select Favorite";
-			if (ImGui::BeginCombo("##MusicFavoritesCombo", preview))
+			const std::string preview =
+			    (favMusicIndex >= 0 && favMusicIndex < (int)favMusicLabels.size()) ? MusicDict::GetDisplayName(favMusicLabels[favMusicIndex]) : "Selecionar favorita";
+			if (ImGui::BeginCombo("##MusicFavoritesCombo", preview.c_str()))
 			{
 				for (int i = 0; i < (int)favMusicLabels.size(); ++i)
 				{
 					const std::string& fav = favMusicLabels[i];
 					bool isSelected = (favMusicIndex == i);
-					if (ImGui::Selectable(fav.c_str(), isSelected))
+					const std::string favoriteDisplay = MusicDict::GetDisplayName(fav);
+					const std::string favoriteLabel = favoriteDisplay + "##favorite" + std::to_string(i);
+					if (ImGui::Selectable(favoriteLabel.c_str(), isSelected))
 					{
 						favMusicIndex = i;
 						music_event = fav;
@@ -668,9 +700,11 @@ namespace YimMenu::Submenus
 						favoriteMusics.erase(fav);
 						SaveFavoriteMusics();
 						std::ofstream out(GetLumenRoamingPath("music_favorites.txt"), std::ios::trunc);
-						for (const auto& music : favoriteMusics) out << music << "\n";
+						for (const auto& music : favoriteMusics)
+							out << music << "\n";
 						out.close();
-						if (favMusicIndex == i) favMusicIndex = -1;
+						if (favMusicIndex == i)
+							favMusicIndex = -1;
 						break;
 					}
 					if (isSelected)
@@ -682,12 +716,13 @@ namespace YimMenu::Submenus
 
 		if (!lastPlayedMusics.empty())
 		{
-			ImGui::Text("Recent Music:");
-			if (ImGui::BeginCombo("##RecentMusics", "Select Music"))
+			ImGui::Text("Musicas recentes:");
+			if (ImGui::BeginCombo("##RecentMusics", "Selecionar musica"))
 			{
 				for (const auto& recentMusic : lastPlayedMusics)
 				{
-					if (ImGui::Selectable(recentMusic.c_str()))
+					const std::string recentLabel = MusicDict::GetDisplayName(recentMusic) + "##recent" + recentMusic;
+					if (ImGui::Selectable(recentLabel.c_str()))
 					{
 						music_event = recentMusic;
 						std::strncpy(musicBuf, music_event.c_str(), sizeof(musicBuf));
@@ -696,7 +731,7 @@ namespace YimMenu::Submenus
 				}
 				ImGui::EndCombo();
 			}
-			if (ImGui::Button("Clear Music History"))
+			if (ImGui::Button("Limpar historico"))
 			{
 				lastPlayedMusics.clear();
 				SaveMusicHistory();
@@ -706,7 +741,8 @@ namespace YimMenu::Submenus
 		}
 	}
 
-	Self::Self() : Submenu::Submenu("Personagem")
+	Self::Self() :
+	    Submenu::Submenu("Personagem")
 	{
 		LoadAnimationHistory();
 		LoadFavoriteAnimations();
@@ -774,6 +810,33 @@ namespace YimMenu::Submenus
 		main->AddItem(movementGroup);
 		AddCategory(std::move(main));
 
+		auto nativeUtilities = std::make_shared<Category>("Utilidades");
+		auto recoveryUtilities = std::make_shared<Group>("Recuperacao");
+		auto appearanceUtilities = std::make_shared<Group>("Aparencia");
+		auto actionUtilities = std::make_shared<Group>("Acoes");
+		auto lawUtilities = std::make_shared<Group>("Lei e recompensa");
+		recoveryUtilities->AddItem(std::make_shared<CommandItem>("restoreplayer"_J));
+		recoveryUtilities->AddItem(std::make_shared<CommandItem>("cleanplayernow"_J));
+		recoveryUtilities->AddItem(std::make_shared<CommandItem>("refillcoresnow"_J));
+		recoveryUtilities->AddItem(std::make_shared<CommandItem>("refilldeadeyenow"_J));
+		appearanceUtilities->AddItem(std::make_shared<CommandItem>("randomoutfit"_J));
+		actionUtilities->AddItem(std::make_shared<CommandItem>("cleartasks"_J));
+		actionUtilities->AddItem(std::make_shared<CommandItem>("ragdollplayer"_J));
+		actionUtilities->AddItem(std::make_shared<CommandItem>("groundplayer"_J));
+		actionUtilities->AddItem(std::make_shared<CommandItem>("removeallweapons"_J));
+		lawUtilities->AddItem(std::make_shared<IntCommandItem>("bountyamount"_J));
+		lawUtilities->AddItem(std::make_shared<CommandItem>("applybounty"_J));
+		lawUtilities->AddItem(std::make_shared<IntCommandItem>("wantedscore"_J));
+		lawUtilities->AddItem(std::make_shared<CommandItem>("applywantedscore"_J));
+		lawUtilities->AddItem(std::make_shared<CommandItem>("maximumhostility"_J));
+		lawUtilities->AddItem(std::make_shared<CommandItem>("readlawstate"_J));
+		lawUtilities->AddItem(std::make_shared<CommandItem>("clearlawstate"_J));
+		nativeUtilities->AddItem(std::move(recoveryUtilities));
+		nativeUtilities->AddItem(std::move(appearanceUtilities));
+		nativeUtilities->AddItem(std::move(actionUtilities));
+		nativeUtilities->AddItem(std::move(lawUtilities));
+		AddCategory(std::move(nativeUtilities));
+
 		auto weapons = std::make_shared<Category>("Armas");
 		auto weaponsGlobalsGroup = std::make_shared<Group>("Globals");
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("infiniteammo"_J));
@@ -819,14 +882,14 @@ namespace YimMenu::Submenus
 
 			// Note: The IntCommand methods might need to be implemented or accessed differently
 			// For now, we'll use a static variable to track the state
-			static int currentValue = 7; 
+			static int currentValue = 7;
 
 			if (currentValue == 6)
-				current_item_index = 0; 
+				current_item_index = 0;
 			else if (currentValue == 8)
-				current_item_index = 1; 
+				current_item_index = 1;
 			else if (currentValue == 7)
-				current_item_index = 2; 
+				current_item_index = 2;
 
 			ImGui::Text("Auto Tag");
 			ImGui::SetNextItemWidth(150.f);
@@ -894,7 +957,9 @@ namespace YimMenu::Submenus
 		AddCategory(std::move(vehicle));
 
 		auto animations = std::make_shared<Category>("Animacoes");
-		animations->AddItem(std::make_shared<ImGuiItem>([] { YimMenu::Submenus::RenderAnimationsCategory(); }));
+		animations->AddItem(std::make_shared<ImGuiItem>([] {
+			YimMenu::Submenus::RenderAnimationsCategory();
+		}));
 		AddCategory(std::move(animations));
 	}
 }

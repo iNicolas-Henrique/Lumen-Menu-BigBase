@@ -1,8 +1,10 @@
 #include "Info.hpp"
+
 #include "core/frontend/Notifications.hpp"
+#include "core/frontend/GeoIPCountry.hpp"
 #include "game/backend/FiberPool.hpp"
-#include "game/backend/Players.hpp"
 #include "game/backend/PlayerDatabase.hpp"
+#include "game/backend/Players.hpp"
 #include "game/backend/Self.hpp"
 #include "game/features/Features.hpp"
 #include "game/rdr/Natives.hpp"
@@ -21,19 +23,20 @@ namespace YimMenu::Submenus
 
 	std::shared_ptr<Category> BuildInfoMenu()
 	{
-		auto menu = std::make_shared<Category>("Info");
+		auto menu = std::make_shared<Category>("Informacoes");
 
-		auto teleportGroup      = std::make_shared<Group>("Teleport");
-		auto playerOptionsGroup = std::make_shared<Group>("Info");
+		auto teleportGroup = std::make_shared<Group>("Teleporte");
+		auto playerOptionsGroup = std::make_shared<Group>("Informacoes");
 
 		playerOptionsGroup->AddItem(std::make_shared<ImGuiItem>([] {
 			if (Players::GetSelected().IsValid())
 			{
-				ImGui::Text(Players::GetSelected().GetName());
-				ImGui::Checkbox("Spectate", &YimMenu::g_Spectating);
-				ImGui::Checkbox("Block Explosions", &Players::GetSelected().GetData().m_BlockExplosions);
-				ImGui::Checkbox("Block Particles", &Players::GetSelected().GetData().m_BlockParticles);
-				if (ImGui::Checkbox("Ghost Mode", &Players::GetSelected().GetData().m_GhostMode))
+				auto selected = Players::GetSelected();
+				ImGui::Text("Nome: %s", selected.GetName());
+				ImGui::Checkbox("Observar", &YimMenu::g_Spectating);
+				ImGui::Checkbox("Bloquear explosoes", &Players::GetSelected().GetData().m_BlockExplosions);
+				ImGui::Checkbox("Bloquear particulas", &Players::GetSelected().GetData().m_BlockParticles);
+				if (ImGui::Checkbox("Modo fantasma", &Players::GetSelected().GetData().m_GhostMode))
 				{
 					if (Players::GetSelected().GetData().m_GhostMode)
 					{
@@ -46,28 +49,37 @@ namespace YimMenu::Submenus
 					}
 				}
 
-				ImGui::Text("Rank: %s", std::to_string(Players::GetSelected().GetRank()));
+				ImGui::Text("Nivel: %d", Players::GetSelected().GetRank());
 
 				if (Players::GetSelected().GetPed())
 				{
-					auto health    = Players::GetSelected().GetPed().GetHealth();
+					auto health = Players::GetSelected().GetPed().GetHealth();
 					auto maxHealth = Players::GetSelected().GetPed().GetMaxHealth();
-					std::string healthStr = std::format("HP: {}/{} ({:.2f}%)", health, maxHealth, (float)health / maxHealth * 100.0f);
+					const float healthPercent = maxHealth > 0 ? static_cast<float>(health) / maxHealth * 100.0f : 0.0f;
+					std::string healthStr = std::format("Vida: {}/{} ({:.2f}%)", health, maxHealth, healthPercent);
 					ImGui::Text("%s", healthStr.c_str());
 
 					auto coords = Players::GetSelected().GetPed().GetPosition();
-					ImGui::Text("Coords: %.2f, %.2f, %.2f", coords.x, coords.y, coords.z);
+					ImGui::Text("Coordenadas: %.2f, %.2f, %.2f", coords.x, coords.y, coords.z);
 
 					auto distance = Players::GetSelected().GetPed().GetPosition().GetDistance(Self::GetPed().GetPosition());
-					ImGui::Text("Distance: %.2f", distance);
+					ImGui::Text("Distancia: %.2f", distance);
 				}
 				else
 				{
-					ImGui::Text("Ped missing or deleted");
+					ImGui::Text("Personagem ausente ou removido");
 				}
 
-				auto rid        = Players::GetSelected().GetGamerInfo()->m_GamerHandle.m_RockstarId;
-				auto rid1       = Players::GetSelected().GetRID();
+				auto gamerInfo = selected.GetGamerInfo();
+				auto address = selected.GetAddress();
+				if (!gamerInfo || !address)
+				{
+					ImGui::TextDisabled("Dados de rede ainda nao disponiveis.");
+					return;
+				}
+
+				auto rid = gamerInfo->m_GamerHandle.m_RockstarId;
+				auto rid1 = Players::GetSelected().GetRID();
 				bool spoofedRid = (rid != rid1);
 
 				if (!spoofedRid)
@@ -84,16 +96,16 @@ namespace YimMenu::Submenus
 				else
 				{
 					std::string spoofedRidStr = std::to_string(rid);
-					std::string ridStr        = std::to_string(rid1);
+					std::string ridStr = std::to_string(rid1);
 
-					ImGui::Text("Spoofed RID:");
+					ImGui::Text("RID mascarado:");
 					ImGui::SameLine();
 					if (ImGui::Button(spoofedRidStr.c_str()))
 					{
 						ImGui::SetClipboardText(spoofedRidStr.c_str());
 					}
 
-					ImGui::Text("Real RID:");
+					ImGui::Text("RID real:");
 					ImGui::SameLine();
 					if (ImGui::Button(ridStr.c_str()))
 					{
@@ -101,14 +113,15 @@ namespace YimMenu::Submenus
 					}
 				}
 
-				auto ip        = Players::GetSelected().GetExternalAddress();
-				auto ip2        = Players::GetSelected().GetAddress()->m_external_ip;
-				auto ip1       = Players::GetSelected().GetGamerInfo()->m_ExternalAddress;
+				auto ip = Players::GetSelected().GetExternalAddress();
+				auto ip2 = address->m_external_ip;
+				auto ip1 = gamerInfo->m_ExternalAddress;
 				bool spoofedIp = (ip.m_packed != ip1.m_packed);
 
 				auto addr2 = BuildIPStr(ip2.m_field1, ip2.m_field2, ip2.m_field3, ip2.m_field4);
+				ImGui::Text("Regiao: %s", GeoIPCountry::Get(addr2).c_str());
 
-				ImGui::Text("Endpoint IP Address:");
+				ImGui::Text("IP do endpoint:");
 				ImGui::SameLine();
 				if (ImGui::Button(addr2.c_str()))
 				{
@@ -119,7 +132,7 @@ namespace YimMenu::Submenus
 				{
 					auto ipStr = BuildIPStr(ip.m_field1, ip.m_field2, ip.m_field3, ip.m_field4);
 
-					ImGui::Text("IP Address:");
+					ImGui::Text("Endereco IP:");
 					ImGui::SameLine();
 					if (ImGui::Button(ipStr.c_str()))
 					{
@@ -129,16 +142,16 @@ namespace YimMenu::Submenus
 				else
 				{
 					auto spoofedIpStr = BuildIPStr(ip1.m_field1, ip1.m_field2, ip1.m_field3, ip1.m_field4);
-					auto realIpStr    = BuildIPStr(ip.m_field1, ip.m_field2, ip.m_field3, ip.m_field4);
+					auto realIpStr = BuildIPStr(ip.m_field1, ip.m_field2, ip.m_field3, ip.m_field4);
 
-					ImGui::Text("Spoofed IP Address:");
+					ImGui::Text("IP mascarado:");
 					ImGui::SameLine();
 					if (ImGui::Button(spoofedIpStr.c_str()))
 					{
 						ImGui::SetClipboardText(spoofedIpStr.c_str());
 					}
 
-					ImGui::Text("Real IP Address:");
+					ImGui::Text("IP real:");
 					ImGui::SameLine();
 					if (ImGui::Button(realIpStr.c_str()))
 					{
@@ -146,71 +159,71 @@ namespace YimMenu::Submenus
 					}
 				}
 
-				if (ImGui::Button("View SC Profile"))
+				if (ImGui::Button("Ver perfil Social Club"))
 					FiberPool::Push([] {
 						uint64_t handle[18];
 						NETWORK::NETWORK_HANDLE_FROM_PLAYER(Players::GetSelected().GetId(), (Any*)&handle);
 						NETWORK::NETWORK_SHOW_PROFILE_UI((Any*)&handle);
 					});
 				ImGui::SameLine();
-				if (ImGui::Button("Add Friend"))
+				if (ImGui::Button("Adicionar amigo"))
 					FiberPool::Push([] {
 						uint64_t handle[18];
 						NETWORK::NETWORK_HANDLE_FROM_PLAYER(Players::GetSelected().GetId(), (Any*)&handle);
 						NETWORK::NETWORK_ADD_FRIEND((Any*)&handle, "");
 					});
 				ImGui::SameLine();
-				if (ImGui::Button("Add to Database"))
+				if (ImGui::Button("Adicionar ao banco"))
 				{
 					auto plyr = Players::GetSelected();
 					g_PlayerDatabase->AddPlayer(plyr.GetRID(), plyr.GetName());
 				}
 
-				if (ImGui::Button("More Info"))
-					ImGui::OpenPopup("More Info");
+				if (ImGui::Button("Mais informacoes"))
+					ImGui::OpenPopup("Mais informacoes");
 
 				ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-				if (ImGui::BeginPopupModal("More Info", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_Modal | ImGuiWindowFlags_AlwaysAutoResize))
+				if (ImGui::BeginPopupModal("Mais informacoes", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_Modal | ImGuiWindowFlags_AlwaysAutoResize))
 				{
-					ImGui::Text("Language: %s", g_LanguageMap[Players::GetSelected().GetLanguage()].c_str());
+					ImGui::Text("Idioma: %s", g_LanguageMap[Players::GetSelected().GetLanguage()].c_str());
 
 					auto honor = Players::GetSelected().GetHonor();
 					std::string honorLevel;
 
 					if (honor >= 0 && honor <= 7)
 					{
-						honorLevel = "Low";
+						honorLevel = "Baixa";
 					}
 					else if (honor > 7 && honor <= 10)
 					{
-						honorLevel = "Moderate";
+						honorLevel = "Moderada";
 					}
 					else if (honor > 10 && honor <= 15)
 					{
-						honorLevel = "High";
+						honorLevel = "Alta";
 					}
 					else
 					{
-						honorLevel = "Invalid";
+						honorLevel = "Invalida";
 					}
 
 					honorLevel += " (" + std::to_string(honor) + "/15)";
-					ImGui::Text("Honor: %s", honorLevel.c_str());
+					ImGui::Text("Honra: %s", honorLevel.c_str());
 
 					std::string model = std::format("0x{:08X}", (joaat_t)Players::GetSelected().GetPed().GetModel());
-					ImGui::Text("Model: %s", model.c_str());
+					ImGui::Text("Modelo: %s", model.c_str());
 					ImGui::SameLine();
-					if (ImGui::Button("Copy"))
+					if (ImGui::Button("Copiar"))
 						ImGui::SetClipboardText(model.c_str());
 
 					if (auto it = g_DistrictMap.find(Players::GetSelected().GetDistrict()); it != g_DistrictMap.end())
-						ImGui::Text("District: %s", it->second.c_str());
+						ImGui::Text("Distrito: %s", it->second.c_str());
 
 					if (auto it = g_RegionMap.find(Players::GetSelected().GetRegion()); it != g_RegionMap.end())
-						ImGui::Text("Region: %s", it->second.c_str());
+						ImGui::Text("Regiao: %s", it->second.c_str());
 
 					auto internalIp = Players::GetSelected().GetInternalAddress();
-					ImGui::Text("Internal IP: %s",
+					ImGui::Text("IP interno: %s",
 					    std::format("{}.{}.{}.{}:{}",
 					        static_cast<int>(internalIp.m_field1),
 					        static_cast<int>(internalIp.m_field2),
@@ -220,7 +233,7 @@ namespace YimMenu::Submenus
 					        .c_str());
 
 					auto relayIp = Players::GetSelected().GetRelayAddress();
-					ImGui::Text("Relay IP: %s",
+					ImGui::Text("IP de retransmissao: %s",
 					    std::format("{}.{}.{}.{}:{}",
 					        static_cast<int>(relayIp.m_field1),
 					        static_cast<int>(relayIp.m_field2),
@@ -230,14 +243,14 @@ namespace YimMenu::Submenus
 					        .c_str());
 
 
-					ImGui::Text("Connection Type: %u", Players::GetSelected().GetConnectionType());
+					ImGui::Text("Tipo de conexao: %u", Players::GetSelected().GetConnectionType());
 
-					ImGui::Text("Average Latency: %.2f", Players::GetSelected().GetAverageLatency());
-					ImGui::Text("Packet Loss: %.2f", Players::GetSelected().GetAveragePacketLoss());
+					ImGui::Text("Latencia media: %.2f", Players::GetSelected().GetAverageLatency());
+					ImGui::Text("Perda de pacotes: %.2f", Players::GetSelected().GetAveragePacketLoss());
 
 					ImGui::Spacing();
 
-					if (ImGui::Button("Close") || ((!ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
+					if (ImGui::Button("Fechar") || ((!ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
 						ImGui::CloseCurrentPopup();
 
 					ImGui::EndPopup();
@@ -246,9 +259,9 @@ namespace YimMenu::Submenus
 			else
 			{
 				Players::SetSelected(Self::GetPlayer());
-				ImGui::Text("No players yet!");
+				ImGui::Text("Nenhum jogador disponivel");
 			}
-		}));
+		}, "Informacoes do jogador", "Mostra os dados e controles do jogador selecionado."));
 
 		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tptoplayer"_J));
 		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tptoplayercamp"_J));

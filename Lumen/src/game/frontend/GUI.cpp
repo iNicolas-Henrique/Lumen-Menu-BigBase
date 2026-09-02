@@ -1,12 +1,15 @@
 #include "GUI.hpp"
-#include "Menu.hpp"
-#include "ESP.hpp"
+
 #include "ContextMenu.hpp"
+#include "ESP.hpp"
+#include "Menu.hpp"
 #include "Overlay.hpp"
-#include "core/commands/Commands.hpp" // Required to access the command system
 #include "core/commands/BoolCommand.hpp" // Required to use BoolCommand
-#include "core/renderer/Renderer.hpp"
+#include "core/commands/Commands.hpp"    // Required to access the command system
 #include "core/frontend/Notifications.hpp"
+#include "core/frontend/manager/AdvancedEditor.hpp"
+#include "core/frontend/manager/UIManager.hpp"
+#include "core/renderer/Renderer.hpp"
 #include "game/frontend/ChatDisplay.hpp"
 
 namespace YimMenu
@@ -56,18 +59,21 @@ namespace YimMenu
 
 	void GUI::ToggleMouse()
 	{
-		auto& io           = ImGui::GetIO();
+		auto& io = ImGui::GetIO();
 		io.MouseDrawCursor = GUI::IsOpen();
 		GUI::IsOpen() ? io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse : io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
 	}
 
 	void GUI::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
-        // THIS IS THE FIX: The logic is now inverted to match your request.
-        // Get the state of the toggle command.
-        const auto use_insert_key = Commands::GetCommand<BoolCommand>("togglemenukey"_J)->GetState();
-        // If ticked (true), use Insert. If unticked (false), use F5.
-        const auto key_to_check = use_insert_key ? VK_INSERT : VK_F5;
+		// THIS IS THE FIX: The logic is now inverted to match your request.
+		// Get the state of the toggle command.
+		const auto use_insert_key = Commands::GetCommand<BoolCommand>("togglemenukey"_J)->GetState();
+		// If ticked (true), use Insert. If unticked (false), use F5.
+		const auto key_to_check = use_insert_key ? VK_INSERT : VK_F5;
+
+		if (m_IsOpen && !AdvancedEditor::IsOpen() && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
+			UIManager::HandleKey(wparam);
 
 		if (msg == WM_KEYUP && wparam == key_to_check)
 		{

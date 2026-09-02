@@ -21,7 +21,7 @@ namespace YimMenu
 		}
 
 		int current_val = m_Command->GetState();
-		auto& list      = m_Command->GetList();
+		auto& list = m_Command->GetList();
 		const char* largest_string = "";
 		std::size_t largest_string_len = 0;
 
@@ -37,7 +37,7 @@ namespace YimMenu
 				int length = strlen(item.second);
 				if (length > largest_string_len)
 				{
-					largest_string     = item.second;
+					largest_string = item.second;
 					largest_string_len = length;
 				}
 			}
@@ -68,5 +68,38 @@ namespace YimMenu
 			}
 			ImGui::EndCombo();
 		}
+	}
+
+	std::string_view ListCommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string ListCommandItem::GetMenuValue() const
+	{
+		if (!m_Command)
+			return {};
+		for (const auto& [value, label] : m_Command->GetList())
+			if (value == m_Command->GetState())
+				return label;
+		return {};
+	}
+	std::string_view ListCommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
+	void ListCommandItem::HandleMenuAction(MenuAction action)
+	{
+		if (!m_Command || m_Command->GetList().empty())
+			return;
+		auto& list = m_Command->GetList();
+		auto current = std::find_if(list.begin(), list.end(), [this](const auto& entry) {
+			return entry.first == m_Command->GetState();
+		});
+		std::size_t index = current == list.end() ? 0 : static_cast<std::size_t>(std::distance(list.begin(), current));
+		if (action == MenuAction::Left)
+			index = index == 0 ? list.size() - 1 : index - 1;
+		else
+			index = (index + 1) % list.size();
+		m_Command->SetState(list[index].first);
 	}
 }
