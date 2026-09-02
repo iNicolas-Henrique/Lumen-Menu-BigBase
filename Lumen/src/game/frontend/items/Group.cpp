@@ -40,4 +40,11 @@ namespace YimMenu
 		}
 		ImGui::EndGroup();
 	}
+
+	void Group::CollectMenuItems(std::vector<UIItem*>& items)
+	{
+		for (const auto& item : m_Items)
+			if (item)
+				item->CollectMenuItems(items);
+	}
 }

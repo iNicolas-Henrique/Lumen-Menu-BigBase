@@ -9,6 +9,8 @@
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Pools.hpp"
 
+#include <chrono>
+
 namespace YimMenu::Features
 {
 	BoolCommand _ContextMenu("ctxmenu", "Context Menu", "Enables a context menu that allows you to perform actions on nearby entities and players");
@@ -38,7 +40,7 @@ namespace YimMenu
 			if (CumulativeDistanceToMiddleOfScreen(screenPos) < distance && handle != Self::GetPed().GetHandle())
 			{
 				closestHandle = handle;
-				distance      = CumulativeDistanceToMiddleOfScreen(screenPos);
+				distance = CumulativeDistanceToMiddleOfScreen(screenPos);
 			}
 		};
 
@@ -46,7 +48,7 @@ namespace YimMenu
 		{
 			for (auto& [id, plyr] : YimMenu::Players::GetPlayers())
 			{
-				if (plyr.IsValid() || plyr.GetPed().GetPointer<void*>())
+				if (plyr.IsValid() && plyr.GetPed().GetPointer<void*>())
 					updateClosestEntity(PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(id));
 			}
 		}
@@ -55,7 +57,7 @@ namespace YimMenu
 		{
 			for (Ped ped : Pools::GetPeds())
 			{
-				if (ped.IsValid() || ped.GetPointer<void*>())
+				if (ped.IsValid() && ped.GetPointer<void*>())
 					updateClosestEntity(ped.GetHandle());
 			}
 		}
@@ -64,7 +66,7 @@ namespace YimMenu
 		{
 			for (Entity veh : Pools::GetVehicles())
 			{
-				if (veh.IsValid() || veh.GetPointer<void*>())
+				if (veh.IsValid() && veh.GetPointer<void*>())
 					updateClosestEntity(veh.GetHandle());
 			}
 		}
@@ -73,7 +75,7 @@ namespace YimMenu
 		{
 			for (Entity obj : Pools::GetObjects())
 			{
-				if (obj.IsValid() || obj.GetPointer<void*>())
+				if (obj.IsValid() && obj.GetPointer<void*>())
 					updateClosestEntity(obj.GetHandle());
 			}
 		}
@@ -91,10 +93,18 @@ namespace YimMenu
 
 			if (m_Enabled)
 			{
-				auto handle = GetEntityHandleClosestToMiddleOfScreen(Features::_ContextPlayers.GetState(),
-				    Features::_ContextPeds.GetState(),
-				    Features::_ContextVehicles.GetState(),
-				    Features::_ContextObjects.GetState());
+				static int cachedHandle{};
+				static auto nextEntityScan = std::chrono::steady_clock::time_point{};
+				const auto now = std::chrono::steady_clock::now();
+				if (now >= nextEntityScan)
+				{
+					cachedHandle = GetEntityHandleClosestToMiddleOfScreen(Features::_ContextPlayers.GetState(),
+					    Features::_ContextPeds.GetState(),
+					    Features::_ContextVehicles.GetState(),
+					    Features::_ContextObjects.GetState());
+					nextEntityScan = now + std::chrono::milliseconds(75);
+				}
+				const auto handle = cachedHandle;
 
 				static auto switchToMenu = [&](ContextOperationsMenu menu) -> void {
 					if (m_CurrentOperationsMenu != menu)
@@ -126,7 +136,7 @@ namespace YimMenu
 					if (m_CurrentOperationsMenu.m_SelectedOperation.m_Name.empty())
 						m_CurrentOperationsMenu.m_SelectedOperation = m_CurrentOperationsMenu.m_Operations.front();
 
-					auto entPos           = m_Entity.GetPosition();
+					auto entPos = m_Entity.GetPosition();
 					float worldCoords_[3] = {entPos.x, entPos.y, entPos.z};
 					Pointers.WorldToScreen(worldCoords_, &m_ScreenPos.x, &m_ScreenPos.y);
 					m_ScreenPos.x *= *Pointers.ScreenResX;
@@ -170,9 +180,8 @@ namespace YimMenu
 		ImVec2 endPos = ImVec2(screenPos.x + m_OperationCardX, screenPos.y + m_OperationCardY);
 		drawList->AddRectFilled(ImVec2(screenPos.x, screenPos.y), endPos, cardColor, 3.f);
 
-		drawList->AddText(ImVec2(screenPos.x, screenPos.y),
-		    ImGui::ColorConvertFloat4ToU32(ImVec4(1, 1, 1, 1)),
-		    operation.m_Name.data());
+		drawList->AddText(
+		    ImVec2(screenPos.x, screenPos.y), ImGui::ColorConvertFloat4ToU32(ImVec4(1, 1, 1, 1)), operation.m_Name.data());
 	}
 
 	void ContextMenu::DrawContextMenuImpl()

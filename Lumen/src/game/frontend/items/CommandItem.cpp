@@ -1,6 +1,6 @@
 #include "Items.hpp"
-#include "core/commands/Commands.hpp"
 #include "core/commands/Command.hpp"
+#include "core/commands/Commands.hpp"
 #include "game/backend/FiberPool.hpp"
 
 namespace YimMenu
@@ -46,12 +46,28 @@ namespace YimMenu
 
 			HotkeySetter(m_Command->GetHash()).Draw();
 
-			
+
 			ImGui::Spacing();
 			if (ImGui::Button("Close") || ((!ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
 				ImGui::CloseCurrentPopup();
 
 			ImGui::EndPopup();
 		}
+	}
+
+	std::string_view CommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string_view CommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
+	void CommandItem::HandleMenuAction(MenuAction action)
+	{
+		if (m_Command && action == MenuAction::Enter)
+			FiberPool::Push([this] {
+				m_Command->Call();
+			});
 	}
 }
