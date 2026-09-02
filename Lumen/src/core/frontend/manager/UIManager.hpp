@@ -17,9 +17,14 @@ namespace YimMenu
 			GetInstance().SetActiveSubmenuImpl(submenu);
 		}
 
-		static void Draw()
+		static void Render()
 		{
-			GetInstance().DrawImpl();
+			GetInstance().RenderImpl();
+		}
+
+		static void HandleKey(WPARAM key)
+		{
+			GetInstance().HandleKeyImpl(key);
 		}
 
 		static std::shared_ptr<Submenu> GetActiveSubmenu()
@@ -37,6 +42,12 @@ namespace YimMenu
 			GetInstance().m_OptionsFont = font;
 		}
 
+		static void SetRuntimeInfo(std::string gameBuild, std::string modVersion)
+		{
+			GetInstance().m_GameBuild = std::move(gameBuild);
+			GetInstance().m_ModVersion = std::move(modVersion);
+		}
+
 	private:
 		static inline UIManager& GetInstance()
 		{
@@ -46,12 +57,25 @@ namespace YimMenu
 
 		void AddSubmenuImpl(const std::shared_ptr<Submenu>&& submenu);
 		void SetActiveSubmenuImpl(const std::shared_ptr<Submenu> submenu);
-		void DrawImpl();
+		void RenderImpl();
+		void HandleKeyImpl(WPARAM key);
+		std::vector<UIItem*> GetCurrentItems() const;
+		std::size_t GetEntryCount() const;
 		std::shared_ptr<Submenu> GetActiveSubmenuImpl();
 		std::shared_ptr<Category> GetActiveCategoryImpl();
 
 		std::shared_ptr<Submenu> m_ActiveSubmenu;
 		std::vector<std::shared_ptr<Submenu>> m_Submenus;
 		ImFont* m_OptionsFont = nullptr;
+		enum class Level
+		{
+			Root,
+			Categories,
+			Options
+		};
+		Level m_Level = Level::Root;
+		std::size_t m_Selected = 0;
+		std::string m_GameBuild = "desconhecida";
+		std::string m_ModVersion = "0.0.1";
 	};
 }

@@ -23,4 +23,12 @@ namespace YimMenu
 			}
 		}
 	}
+
+	void Button::HandleMenuAction(MenuAction action)
+	{
+		if (action == MenuAction::Enter && m_OnClick)
+			FiberPool::Push([callback = m_OnClick] {
+				callback();
+			});
+	}
 }
