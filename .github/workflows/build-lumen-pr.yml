@@ -1,8 +1,10 @@
-name: Build Lumen DLL (main)
+name: Build Lumen DLL
 
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 jobs:
@@ -10,10 +12,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout main
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: main
           submodules: recursive
 
       - name: Setup MSVC environment
@@ -25,6 +26,13 @@ jobs:
         shell: pwsh
         run: |
           cmake -S Lumen -B Lumen/build -G Ninja "-DCMAKE_BUILD_TYPE=RelWithDebInfo" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
+      - name: Verify frontend structure
+        shell: pwsh
+        run: |
+          if (Test-Path "Lumen/tools/verify_frontend_structure.py") {
+            python Lumen/tools/verify_frontend_structure.py
+          }
 
       - name: Build DLL
         shell: pwsh
@@ -39,6 +47,6 @@ jobs:
       - name: Upload DLL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Lumen-Main-DLL
+          name: Lumen-DLL
           path: Lumen/build/**/Lumen.dll
           if-no-files-found: error
