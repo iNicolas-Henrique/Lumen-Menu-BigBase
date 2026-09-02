@@ -20,9 +20,43 @@
 
 #include <Windows.h>
 #include <algorithm>
+#include <vector>
+
+#pragma comment(lib, "Version.lib")
 
 namespace YimMenu
 {
+	namespace
+	{
+		std::string GetGameBuildString()
+		{
+			char executablePath[MAX_PATH]{};
+			if (!GetModuleFileNameA(nullptr, executablePath, MAX_PATH))
+				return "desconhecida";
+
+			DWORD ignoredHandle{};
+			const DWORD versionSize = GetFileVersionInfoSizeA(executablePath, &ignoredHandle);
+			if (!versionSize)
+				return "desconhecida";
+
+			std::vector<std::uint8_t> versionData(versionSize);
+			if (!GetFileVersionInfoA(executablePath, 0, versionSize, versionData.data()))
+				return "desconhecida";
+
+			VS_FIXEDFILEINFO* versionInfo{};
+			UINT versionInfoSize{};
+			if (!VerQueryValueA(versionData.data(), "\\", reinterpret_cast<void**>(&versionInfo), &versionInfoSize)
+			    || !versionInfo || versionInfoSize < sizeof(VS_FIXEDFILEINFO))
+				return "desconhecida";
+
+			return std::format("{}.{}.{}.{}",
+			    HIWORD(versionInfo->dwFileVersionMS),
+			    LOWORD(versionInfo->dwFileVersionMS),
+			    HIWORD(versionInfo->dwFileVersionLS),
+			    LOWORD(versionInfo->dwFileVersionLS));
+		}
+	}
+
 	static YimMenu::Submenus::Settings g_SettingsInstance;
 
 	void Menu::Init()
@@ -42,11 +76,11 @@ namespace YimMenu
 		    [] {
 			    if (!GUI::IsOpen())
 				    return;
+
 			    static bool runtimeInfoLoaded = false;
-			    if (!runtimeInfoLoaded && NativeInvoker::AreHandlersCached())
+			    if (!runtimeInfoLoaded)
 			    {
-				    const char* gameBuild = MISC::GET_GAME_VERSION_NAME();
-				    UIManager::SetRuntimeInfo(gameBuild && *gameBuild ? gameBuild : "desconhecida", LUMEN_VERSION);
+				    UIManager::SetRuntimeInfo(GetGameBuildString(), LUMEN_VERSION);
 				    runtimeInfoLoaded = true;
 			    }
 
