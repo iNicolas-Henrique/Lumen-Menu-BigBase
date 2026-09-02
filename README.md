@@ -1,6 +1,12 @@
 # Lumen
 
-> **Controle direto. Sem excesso.**
+<p align="center">
+  <a href="https://www.rockstargames.com/reddeadredemption2">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/2/22/Red_Dead_Redemption_2_Logo.png" alt="Red Dead Redemption 2" width="520">
+  </a>
+</p>
+
+<p align="center"><strong>Controle direto. Sem excesso.</strong></p>
 
 **Lumen** é um mod menu experimental para **Red Dead Redemption 2**, desenvolvido em C++ com foco em desempenho, organização e uma interface simples de navegar.
 
