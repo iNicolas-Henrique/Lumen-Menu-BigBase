@@ -42,6 +42,12 @@ namespace YimMenu
 			GetInstance().m_OptionsFont = font;
 		}
 
+		static void SetRuntimeInfo(std::string gameBuild, std::string modVersion)
+		{
+			GetInstance().m_GameBuild = std::move(gameBuild);
+			GetInstance().m_ModVersion = std::move(modVersion);
+		}
+
 	private:
 		static inline UIManager& GetInstance()
 		{
@@ -69,5 +75,7 @@ namespace YimMenu
 		};
 		Level m_Level = Level::Root;
 		std::size_t m_Selected = 0;
+		std::string m_GameBuild = "desconhecida";
+		std::string m_ModVersion = "0.0.1";
 	};
 }

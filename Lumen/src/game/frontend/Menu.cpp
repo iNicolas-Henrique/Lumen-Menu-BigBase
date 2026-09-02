@@ -7,6 +7,8 @@
 #include "game/backend/ScriptMgr.hpp"
 #include "game/frontend/fonts/Fonts.hpp"
 #include "game/pointers/Pointers.hpp"
+#include "game/rdr/Natives.hpp"
+#include "game/rdr/invoker/Invoker.hpp"
 #include "submenus/Debug.hpp"
 #include "submenus/Network.hpp"
 #include "submenus/Players.hpp"
@@ -40,6 +42,13 @@ namespace YimMenu
 		    [] {
 			    if (!GUI::IsOpen())
 				    return;
+			    static bool runtimeInfoLoaded = false;
+			    if (!runtimeInfoLoaded && NativeInvoker::AreHandlersCached())
+			    {
+				    const char* gameBuild = MISC::GET_GAME_VERSION_NAME();
+				    UIManager::SetRuntimeInfo(gameBuild && *gameBuild ? gameBuild : "desconhecida", LUMEN_VERSION);
+				    runtimeInfoLoaded = true;
+			    }
 
 			    ImGui::PushFont(Menu::Font::g_DefaultFont);
 			    UIManager::Render();
@@ -59,6 +68,25 @@ namespace YimMenu
 		style.ItemInnerSpacing = ImVec2(7.0f, 5.0f);
 		style.ScrollbarSize = 12.0f;
 
+		const ImVec4 darkGreen(34.0f / 255.0f, 48.0f / 255.0f, 11.0f / 255.0f, 1.0f);
+		const ImVec4 lightGreen(52.0f / 255.0f, 77.0f / 255.0f, 14.0f / 255.0f, 1.0f);
+		const ImVec4 background(9.0f / 255.0f, 12.0f / 255.0f, 7.0f / 255.0f, 0.98f);
+		style.Colors[ImGuiCol_WindowBg] = background;
+		style.Colors[ImGuiCol_ChildBg] = ImVec4(14.0f / 255.0f, 18.0f / 255.0f, 10.0f / 255.0f, 0.96f);
+		style.Colors[ImGuiCol_PopupBg] = background;
+		style.Colors[ImGuiCol_Border] = lightGreen;
+		style.Colors[ImGuiCol_FrameBg] = darkGreen;
+		style.Colors[ImGuiCol_FrameBgHovered] = lightGreen;
+		style.Colors[ImGuiCol_FrameBgActive] = lightGreen;
+		style.Colors[ImGuiCol_Button] = darkGreen;
+		style.Colors[ImGuiCol_ButtonHovered] = lightGreen;
+		style.Colors[ImGuiCol_ButtonActive] = lightGreen;
+		style.Colors[ImGuiCol_CheckMark] = ImVec4(0.82f, 0.92f, 0.60f, 1.0f);
+		style.Colors[ImGuiCol_Header] = darkGreen;
+		style.Colors[ImGuiCol_HeaderHovered] = lightGreen;
+		style.Colors[ImGuiCol_HeaderActive] = lightGreen;
+		style.Colors[ImGuiCol_SliderGrab] = lightGreen;
+		style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.32f, 0.46f, 0.10f, 1.0f);
 		YimMenu::Submenus::ApplyMenuColors();
 
 		style.GrabRounding = style.FrameRounding = style.ChildRounding = style.WindowRounding = 6.0f;
