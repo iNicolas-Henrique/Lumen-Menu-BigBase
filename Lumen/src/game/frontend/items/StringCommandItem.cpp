@@ -30,4 +30,17 @@ namespace YimMenu
 			m_Command->SetStringValue(buffer);
 		}
 	}
+
+	std::string_view StringCommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string StringCommandItem::GetMenuValue() const
+	{
+		return m_Command ? m_Command->GetString() : "";
+	}
+	std::string_view StringCommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
 }

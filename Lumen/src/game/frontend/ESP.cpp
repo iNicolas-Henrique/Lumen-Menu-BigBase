@@ -332,7 +332,8 @@ namespace YimMenu
 
     void ESP::Draw()
     {
-        if (!NativeInvoker::AreHandlersCached() || CAM::IS_SCREEN_FADED_OUT())
+        if ((!Features::_ESPDrawPlayers.GetState() && !Features::_ESPDrawPeds.GetState()) ||
+            !NativeInvoker::AreHandlersCached() || CAM::IS_SCREEN_FADED_OUT())
             return;
 
         if (const auto drawList = ImGui::GetBackgroundDrawList())
@@ -348,7 +349,7 @@ namespace YimMenu
             {
                 for (Ped ped : Pools::GetPeds())
                 {
-                    if (ped.IsValid() || ped.GetPointer<void*>())
+                    if (ped.IsValid() && ped.GetPointer<void*>())
                         DrawPeds(ped, drawList);
                 }
             }
