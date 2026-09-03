@@ -1,0 +1,71 @@
+name: Build Tenebris DLL
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Verify Tenebris branding
+        shell: pwsh
+        run: |
+          $oldName = ('Lu' + 'men')
+          $pathHits = @(git ls-files | Select-String -Pattern $oldName -SimpleMatch -CaseSensitive:$false)
+          $contentHits = @(git grep -n -i -I -- $oldName 2>$null)
+          if ($pathHits.Count -gt 0 -or $contentHits.Count -gt 0) {
+            $pathHits | ForEach-Object { Write-Host $_ }
+            $contentHits | ForEach-Object { Write-Host $_ }
+            throw "Ocorrencias do nome antigo ainda existem."
+          }
+          if (-not (Test-Path "Tenebris")) { throw "Diretorio Tenebris ausente." }
+          if (Test-Path "Tenebris.dll") { throw "DLL antiga rastreada na raiz ainda existe." }
+          if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "T E N E B R I S" -Quiet)) {
+            throw "Logo TENEBRIS do console ausente."
+          }
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -S Tenebris -B Tenebris/build -G Ninja "-DCMAKE_BUILD_TYPE=RelWithDebInfo" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
+      - name: Verify frontend structure
+        shell: pwsh
+        run: |
+          if (Test-Path "Tenebris/tools/verify_frontend_structure.py") {
+            python Tenebris/tools/verify_frontend_structure.py
+          }
+
+      - name: Build DLL
+        shell: pwsh
+        run: |
+          cmake --build Tenebris/build --parallel 8
+
+      - name: Show produced DLL
+        shell: pwsh
+        run: |
+          $dlls = @(Get-ChildItem -Path Tenebris/build -Recurse -Filter Tenebris.dll)
+          if ($dlls.Count -eq 0) { throw "Tenebris.dll nao foi produzida." }
+          $dlls | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tenebris-DLL
+          path: Tenebris/build/**/Tenebris.dll
+          if-no-files-found: error
