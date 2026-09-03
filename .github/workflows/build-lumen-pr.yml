@@ -25,8 +25,6 @@ jobs:
       - name: Apply Tenebris rebrand
         if: github.event_name == 'pull_request'
         shell: pwsh
-        env:
-          TARGET_BRANCH: ${{ github.head_ref }}
         run: |
           $oldName = ('Lu' + 'men')
           $newName = 'Tenebris'
@@ -114,8 +112,22 @@ jobs:
 
           if (git status --porcelain) {
             git commit -m "refactor: rename $oldName to $newName"
-            git push origin "HEAD:$env:TARGET_BRANCH"
           }
+
+          git diff HEAD^ HEAD --name-status --find-renames > rebrand-namestatus.txt
+          git show --binary --find-renames --format=fuller HEAD > rebrand.patch
+          git archive --format=zip --output=Tenebris-Rebrand-Source.zip HEAD
+
+      - name: Upload rebrand snapshot
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tenebris-Rebrand
+          path: |
+            rebrand-namestatus.txt
+            rebrand.patch
+            Tenebris-Rebrand-Source.zip
+          if-no-files-found: error
 
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
