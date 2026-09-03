@@ -8,6 +8,7 @@
 #include "game/frontend/fonts/Fonts.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "submenus/Debug.hpp"
+#include "submenus/FaceEditor.hpp"
 #include "submenus/Network.hpp"
 #include "submenus/Players.hpp"
 #include "submenus/Recovery.hpp"
@@ -61,7 +62,9 @@ namespace YimMenu
 	{
 		g_SettingsInstance.LoadSettings();
 
-		UIManager::AddSubmenu(std::make_shared<Submenus::Self>());
+		auto selfSubmenu = std::make_shared<Submenus::Self>();
+		Submenus::InstallFaceEditor(selfSubmenu);
+		UIManager::AddSubmenu(std::move(selfSubmenu));
 		UIManager::AddSubmenu(std::make_shared<Submenus::Teleport>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Network>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Players>());
