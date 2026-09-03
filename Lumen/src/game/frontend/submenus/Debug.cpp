@@ -79,7 +79,7 @@ namespace YimMenu::Submenus
 					PED::_SET_PED_MOTIVATION_STATE_OVERRIDE(Self::GetPed().GetHandle(), mflag, false);
 				});
 			}
-		}));
+		}, "Ferramentas de diagnostico", "Reune comandos de teste para diagnosticar objetos e estados do personagem."));
 		AddCategory(std::move(debug));
 	}
 }

@@ -23,6 +23,10 @@ namespace YimMenu
 
 		void Draw();
 		int GetLength();
+		const std::vector<std::shared_ptr<UIItem>>& GetItems() const
+		{
+			return m_Items;
+		}
 
 	private:
 		std::vector<std::shared_ptr<UIItem>> m_Items;

@@ -20,7 +20,7 @@ namespace YimMenu
 			return;
 		}
 
-		auto value  = m_Command->GetState();
+		auto value = m_Command->GetState();
 		auto label = m_LabelOverride.has_value() ? m_LabelOverride.value().c_str() : m_Command->GetLabel().c_str();
 		if (!m_Command->GetMinimum().has_value() || !m_Command->GetMaximum().has_value())
 		{
@@ -38,5 +38,27 @@ namespace YimMenu
 				m_Command->SetState(value);
 			}
 		}
+	}
+
+	std::string_view FloatCommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string FloatCommandItem::GetMenuValue() const
+	{
+		return m_Command ? std::format("{:.2f}", m_Command->GetState()) : "";
+	}
+	std::string_view FloatCommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
+	void FloatCommandItem::HandleMenuAction(MenuAction action)
+	{
+		if (!m_Command || action == MenuAction::Enter)
+			return;
+		const float delta = action == MenuAction::Right ? 0.1f : -0.1f;
+		const float minimum = m_Command->GetMinimum().value_or(-FLT_MAX);
+		const float maximum = m_Command->GetMaximum().value_or(FLT_MAX);
+		m_Command->SetState(std::clamp(m_Command->GetState() + delta, minimum, maximum));
 	}
 }

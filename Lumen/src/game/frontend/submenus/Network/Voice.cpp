@@ -114,9 +114,9 @@ namespace YimMenu::Submenus
 		voice->AddItem(std::make_shared<BoolCommandItem>("hearall"_J));
 		voice->AddItem(std::make_shared<ConditionalItem>("hearall"_J, std::make_shared<BoolCommandItem>("forcesendvc"_J)));
 		voice->AddItem(std::make_shared<BoolCommandItem>("hidevcsender"_J));
-		voice->AddItem(std::make_shared<ImGuiItem>(&ShowVoiceSpoofingMenu));
+		voice->AddItem(std::make_shared<ImGuiItem>(&ShowVoiceSpoofingMenu, "Alterar voz", "Configura a voz transmitida aos outros jogadores."));
 		voice->AddItem(std::make_shared<BoolCommandItem>("voicechatoverride"_J));
-		voice->AddItem(std::make_shared<ImGuiItem>(&ShowVoiceFileSelectionMenu));
+		voice->AddItem(std::make_shared<ImGuiItem>(&ShowVoiceFileSelectionMenu, "Arquivo de voz", "Seleciona o arquivo de audio usado na transmissao."));
 
 		return std::move(voice);
 	}

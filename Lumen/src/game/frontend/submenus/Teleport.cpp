@@ -181,14 +181,14 @@ namespace YimMenu::Submenus
                     SCRIPTS::BAIL_TO_LANDING_PAGE(0);
                 });
             }
-        }));
+        }, "Recarregar mapa", "Retorna a tela de carregamento para reinicializar o mapa.", 240.0f));
 
         main->AddItem(miscGroup);
 
         auto customteleport = std::make_shared<Category>("Salvos");
         customteleport->AddItem(std::make_shared<ImGuiItem>([] {
             RenderCustomTeleport();
-        }));
+        }, "Locais salvos", "Cria, abre e administra locais personalizados de teleporte."));
 
         AddCategory(std::move(main));
         AddCategory(std::move(customteleport));

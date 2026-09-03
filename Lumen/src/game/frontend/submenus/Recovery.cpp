@@ -195,7 +195,7 @@ namespace YimMenu::Submenus
 					recoveryCommand->SetState(true);
 				}
 			}
-		}));
+		}, "Gerar colecionaveis", "Seleciona e entrega colecionaveis da categoria escolhida."));
 		spawnHerbsGroup->AddItem(std::make_shared<ImGuiItem>([=] {
 			if (recoveryCommand->GetState())
 			{
@@ -227,7 +227,7 @@ namespace YimMenu::Submenus
 					});
 				}
 			}
-		}));
+		}, "Gerar ervas", "Seleciona e entrega ervas ao personagem."));
 		recoveryOptions->AddItem(std::make_shared<BoolCommandItem>("unlimiteditems"_J));
 		recovery->AddItem(spawnCollectiblesGroup);
 		recovery->AddItem(spawnHerbsGroup);
@@ -244,7 +244,7 @@ namespace YimMenu::Submenus
 					}
 				});
 			}
-		}));
+		}, "Concluir desafios diarios", "Aplica o progresso configurado aos desafios diarios.", 240.0f));
 		recovery->AddItem(dailiesGroup);
 
 		AddCategory(std::move(recovery));

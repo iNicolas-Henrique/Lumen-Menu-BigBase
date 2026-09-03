@@ -103,7 +103,21 @@ namespace YimMenu::Submenus
         }
         else
         {
-            if (ImGui::BeginCombo("Players", YimMenu::Players::GetSelected().GetName()))
+            if (sortedPlayers.empty())
+            {
+                ImGui::TextDisabled("Nenhum jogador disponivel nesta sessao.");
+                return;
+            }
+
+            auto selected = YimMenu::Players::GetSelected();
+            if (!selected.IsValid())
+            {
+                YimMenu::Players::SetSelected(sortedPlayers.begin()->first);
+                selected = YimMenu::Players::GetSelected();
+            }
+
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("Jogador", selected.GetName()))
             {
                 for (auto& [id, player] : sortedPlayers)
                 {
@@ -128,7 +142,9 @@ namespace YimMenu::Submenus
 
         for (auto& category : m_Categories)
             category->PrependItem(std::make_shared<ImGuiItem>([] {
-                DrawPlayerList();
-            }));
+                // The classic menu already owns the containing window. Rendering
+                // another external window here placed the list off-screen.
+                DrawPlayerList(false);
+            }, "Selecionar jogador", "Escolha o jogador usado pelas opcoes desta categoria."));
     }
 }

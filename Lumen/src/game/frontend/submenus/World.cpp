@@ -76,7 +76,7 @@ namespace YimMenu::Submenus
 					NETWORK::_NETWORK_CLEAR_CLOCK_OVERRIDE_OVERTIME(0);
 				});
 			}
-		}));
+		}, "Horario do mundo", "Ajusta a hora do mundo e permite congelar o relogio.", 360.0f));
 
 
 		weather->AddItem(std::make_shared<ImGuiItem>([] {
@@ -104,7 +104,7 @@ namespace YimMenu::Submenus
 					MISC::CLEAR_OVERRIDE_WEATHER();
 				});
 			}
-		}));
+		}, "Clima do mundo", "Seleciona o clima que sera aplicado ao mundo.", 360.0f));
 
 
 		auto spawners            = std::make_shared<Category>("Criadores");
@@ -114,15 +114,15 @@ namespace YimMenu::Submenus
 
 		pedSpawnerGroup->AddItem(std::make_shared<ImGuiItem>([] {
 			RenderPedSpawnerMenu();
-		}));
+		}, "Criar PED", "Abre as opcoes para criar e configurar personagens e animais."));
 
 		vehicleSpawnerGroup->AddItem(std::make_shared<ImGuiItem>([] {
 			RenderVehicleSpawnerMenu();
-		}));
+		}, "Criar veiculo", "Abre as opcoes para criar e configurar veiculos."));
 
 		trainSpawnerGroup->AddItem(std::make_shared<ImGuiItem>([] {
 			RenderTrainsMenu();
-		}));
+		}, "Criar trem", "Abre as opcoes para criar e controlar trens."));
 
 		spawners->AddItem(pedSpawnerGroup);
 		spawners->AddItem(vehicleSpawnerGroup);
@@ -145,7 +145,7 @@ namespace YimMenu::Submenus
 				        GetObjectPool()->m_Size - GetObjectPool()->GetNumFreeSlots(),
 				        GetObjectPool()->m_Size)
 				        .data());
-		});
+		}, "Uso dos pools", "Mostra a quantidade de entidades carregadas nos pools do jogo.", 300.0f);
 
 		auto killPeds = std::make_shared<Group>("Kill", 1);
 		killPeds->AddItem(std::make_shared<CommandItem>("killallpeds"_J));
@@ -180,7 +180,7 @@ namespace YimMenu::Submenus
 
 		shows->AddItem(std::make_shared<ImGuiItem>([] {
 			RenderShowsMenu();
-		}));
+		}, "Teatro e espetaculos", "Seleciona e controla apresentacoes e espetaculos do mundo."));
 
 
 		AddCategory(std::move(main));

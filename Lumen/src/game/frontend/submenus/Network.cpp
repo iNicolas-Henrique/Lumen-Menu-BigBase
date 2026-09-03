@@ -125,12 +125,13 @@ namespace YimMenu::Submenus
         //adminGroup->AddItem(std::make_shared<BoolCommandItem>("detectadmins"_J));
 
         database->AddItem(std::make_shared<ImGuiItem>([] {
-            ImGui::SetNextItemWidth(300.f);
+			ImGui::SetNextItemWidth(-FLT_MIN);
             ImGui::PushID(3);
             ImGui::InputText("Player Name", search, sizeof(search));
             ImGui::PopID();
 
-            if (ImGui::BeginListBox("###players", {180, static_cast<float>(*Pointers.ScreenResY - 400 - 38 * 4)}))
+			const float listHeight = std::clamp(ImGui::GetContentRegionAvail().y * 0.38f, 100.0f, 180.0f);
+            if (ImGui::BeginListBox("###players", {-FLT_MIN, listHeight}))
             {
                 auto& item_arr = g_PlayerDatabase->GetAllPlayers();
                 if (item_arr.size() > 0)
@@ -152,8 +153,7 @@ namespace YimMenu::Submenus
             if (g_PlayerDatabase->GetSelected() && show_player_editor)
             {
                 ImGui::PushID(1);
-                ImGui::SameLine();
-                if (ImGui::BeginChild("###selected_player", {500, static_cast<float>(*Pointers.ScreenResY - 388 - 38 * 4)}, false, ImGuiWindowFlags_NoBackground))
+				if (ImGui::BeginChild("###selected_player", {0.0f, 0.0f}, false, ImGuiWindowFlags_NoBackground))
                 {
                     if (ImGui::InputText("Name", name_buf, sizeof(name_buf)))
                     {
@@ -202,8 +202,9 @@ namespace YimMenu::Submenus
                         show_player_editor = false;
                         show_new_player    = true;
                     }
-                    ImGui::PopID();
                 }
+				ImGui::EndChild();
+				ImGui::PopID();
             }
             if (show_new_player)
             {
@@ -218,7 +219,7 @@ namespace YimMenu::Submenus
                 }
                 ImGui::PopID();
             }
-        }));
+        }, "Banco de jogadores", "Pesquisa, revisa e edita os jogadores salvos no banco local."));
 
         static std::string nameBuf, colorBuf = "";
         static const char* iconBuf = "";
@@ -282,7 +283,7 @@ namespace YimMenu::Submenus
                 ImGui::SetTooltip("Spoof your Rockstar ID");
 
             ImGui::InputScalar("##rockstar_id_input", ImGuiDataType_U64, &g_SpoofingStorage.spoofedRID);
-        }));
+        }, "Identidade da sessao", "Configura nome, IP e Rockstar ID exibidos ao entrar em uma sessao."));
 
         blipSpoofingGroup->AddItem(std::make_shared<BoolCommandItem>("spoofblip"_J));
         blipSpoofingGroup->AddItem(std::make_shared<ConditionalItem>("spoofblip"_J, std::make_shared<ListCommandItem>("blipsprite"_J, "Blip")));

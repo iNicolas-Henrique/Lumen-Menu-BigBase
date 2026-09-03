@@ -4,6 +4,7 @@
 #include <mutex>
 #include <filesystem>
 #include <cstdlib>
+#include <cctype>
 
 namespace YimMenu
 {
@@ -2884,6 +2885,27 @@ namespace YimMenu
     {
         std::call_once(s_musicDictLoaded, LoadMusicDictImpl);
         return s_musicEvents;
+    }
+
+    std::string MusicDict::GetDisplayName(std::string_view eventName)
+    {
+        std::string display;
+        display.reserve(eventName.size());
+        bool newWord = true;
+        for (char character : eventName)
+        {
+            if (character == '_')
+            {
+                if (!display.empty() && display.back() != ' ')
+                    display.push_back(' ');
+                newWord = true;
+                continue;
+            }
+            const auto value = static_cast<unsigned char>(character);
+            display.push_back(newWord ? static_cast<char>(std::toupper(value)) : static_cast<char>(std::tolower(value)));
+            newWord = false;
+        }
+        return display;
     }
 
     void MusicDict::ReloadMusicDict()

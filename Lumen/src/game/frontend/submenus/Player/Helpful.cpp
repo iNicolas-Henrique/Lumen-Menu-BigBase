@@ -230,7 +230,7 @@ namespace YimMenu::Submenus
 					SpawnReqestedRewards({selected});
 				});
 			}
-		}));
+		}, "Gerar colecionavel", "Cria o colecionavel escolhido para o jogador selecionado."));
 
 		menu->AddItem(std::make_shared<PlayerCommandItem>("spawngoldchest"_J));
 		menu->AddItem(std::make_shared<ImGuiItem>([] {
@@ -264,7 +264,7 @@ namespace YimMenu::Submenus
 					Notifications::Show("Spawned Wagon", "Spawned Hunting Wagon for Player", NotificationType::Success);
 				});
 			}
-		}));
+		}, "Criar carrocas", "Cria uma carroca de cacador ou de recompensa para o jogador selecionado.", 300.0f));
 
 		menu->AddItem(spawnCollectiblesGroup);
 

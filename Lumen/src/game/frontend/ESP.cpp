@@ -280,7 +280,7 @@ namespace YimMenu
         if (Features::_ESPModelPeds.GetState())
         {
             if (auto it = Data::g_PedModels.find(ped.GetModel()); it != Data::g_PedModels.end())
-                info += std::format("{} (0x{:08X}) ", it->second, static_cast<joaat_t>(ped.GetModel())); // Show both name and hash
+				info += std::format("{} (0x{:08X}) ", Data::GetPedDisplayName(it->second), static_cast<joaat_t>(ped.GetModel())); // Show both name and hash
             else
                 info += std::format("0x{:08X} ", static_cast<joaat_t>(ped.GetModel())); // Show only hash if name not found
         }
@@ -332,7 +332,8 @@ namespace YimMenu
 
     void ESP::Draw()
     {
-        if (!NativeInvoker::AreHandlersCached() || CAM::IS_SCREEN_FADED_OUT())
+        if ((!Features::_ESPDrawPlayers.GetState() && !Features::_ESPDrawPeds.GetState()) ||
+            !NativeInvoker::AreHandlersCached() || CAM::IS_SCREEN_FADED_OUT())
             return;
 
         if (const auto drawList = ImGui::GetBackgroundDrawList())
@@ -348,7 +349,7 @@ namespace YimMenu
             {
                 for (Ped ped : Pools::GetPeds())
                 {
-                    if (ped.IsValid() || ped.GetPointer<void*>())
+                    if (ped.IsValid() && ped.GetPointer<void*>())
                         DrawPeds(ped, drawList);
                 }
             }

@@ -1,9 +1,36 @@
 #pragma once
+#include <cctype>
 #include <string>
+#include <string_view>
 #include "util/Joaat.hpp"
 
 namespace YimMenu::Data
 {
+	inline std::string GetPedDisplayName(std::string_view model)
+	{
+		std::string_view name = model;
+		if (name.starts_with("A_C_"))
+			name.remove_prefix(4);
+
+		std::string result;
+		result.reserve(name.size() + 8);
+		for (std::size_t index = 0; index < name.size(); ++index)
+		{
+			const char current = name[index];
+			if (current == '_')
+			{
+				if (!result.empty() && result.back() != ' ')
+					result.push_back(' ');
+				continue;
+			}
+			if (!result.empty() && index > 0 && std::isupper(static_cast<unsigned char>(current)) &&
+			    std::islower(static_cast<unsigned char>(name[index - 1])) && result.back() != ' ')
+				result.push_back(' ');
+			result.push_back(current);
+		}
+		return result;
+	}
+
 	const std::unordered_map<std::uint32_t, const char*> g_PedModels =
 	{
 	    {"A_C_Alligator_01"_J, "A_C_Alligator_01"},

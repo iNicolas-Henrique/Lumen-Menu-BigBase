@@ -40,4 +40,13 @@ namespace YimMenu
 			ImGui::EndPopup();
 		}
 	}
+
+	std::string_view ColorCommandItem::GetMenuLabel() const
+	{
+		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
+	}
+	std::string_view ColorCommandItem::GetMenuDescription() const
+	{
+		return m_Command ? m_Command->GetDescription() : std::string_view{};
+	}
 }

@@ -21,10 +21,12 @@ namespace YimMenu::Hooks
 		{
 			Renderer::DX12PreResize();
 			const auto result = BaseHook::Get<SwapChain::ResizeBuffers, DetourHook<decltype(&ResizeBuffers)>>()->Original()(that, bufferCount, width, height, newFormat, swapChainFlags);
+			// Recreate ImGui objects even when DXGI rejects a transient (for
+			// example minimized) size, otherwise rendering remains disabled.
 			Renderer::DX12PostResize();
 			return result;
 		}
 		
-		return BaseHook::Get<SwapChain::Present, DetourHook<decltype(&ResizeBuffers)>>()->Original()(that, bufferCount, width, height, newFormat, swapChainFlags);
+		return BaseHook::Get<SwapChain::ResizeBuffers, DetourHook<decltype(&ResizeBuffers)>>()->Original()(that, bufferCount, width, height, newFormat, swapChainFlags);
 	}
 }
