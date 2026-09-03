@@ -25,28 +25,37 @@ jobs:
       - name: Apply Tenebris rebrand
         if: github.event_name == 'pull_request'
         shell: pwsh
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
         run: |
           $oldName = ('Lu' + 'men')
           $newName = 'Tenebris'
+          $legacyWorkflow = ".github/workflows/build-$($oldName.ToLower())-pr.yml"
+
+          if (-not (Test-Path $oldName)) {
+            Write-Host "Projeto ja esta renomeado para Tenebris; nenhuma migracao necessaria."
+            exit 0
+          }
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if (Test-Path $oldName) {
-            git mv -- $oldName $newName
-          }
+          git mv -- $oldName $newName
           if (Test-Path "$oldName.dll") {
             git rm -f -- "$oldName.dll"
           }
           git add -A
 
+          $env:LEGACY_WORKFLOW = $legacyWorkflow
           @'
+          import os
           import pathlib
           import re
           import subprocess
 
           old = ''.join(chr(x) for x in (76, 117, 109, 101, 110))
           new = 'Tenebris'
+          legacy_workflow = os.environ['LEGACY_WORKFLOW'].replace('\\', '/')
 
           def replace_name(value: str) -> str:
               return value.replace(old.upper(), new.upper()).replace(old, new).replace(old.lower(), new.lower())
@@ -55,6 +64,8 @@ jobs:
           tracked = [p for p in tracked if p]
 
           for src in sorted(tracked, key=lambda p: (p.count('/'), len(p)), reverse=True):
+              if src.replace('\\', '/') == legacy_workflow:
+                  continue
               dst = replace_name(src)
               if dst == src:
                   continue
@@ -63,6 +74,8 @@ jobs:
 
           tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode('utf-8').split('\0')
           for name in (p for p in tracked if p):
+              if name.replace('\\', '/') == legacy_workflow:
+                  continue
               path = pathlib.Path(name)
               data = path.read_bytes()
               if b'\x00' in data:
@@ -97,8 +110,8 @@ jobs:
 
           git add -A
 
-          $pathHits = @(git ls-files | Select-String -Pattern $oldName -SimpleMatch -CaseSensitive:$false)
-          $contentHits = @(git grep -n -i -I -- $oldName 2>$null)
+          $pathHits = @(git ls-files | Where-Object { $_ -ne $legacyWorkflow } | Select-String -Pattern $oldName -SimpleMatch -CaseSensitive:$false)
+          $contentHits = @(git grep -n -i -I -- $oldName -- ':!/.github/workflows/*' 2>$null)
           if ($pathHits.Count -gt 0 -or $contentHits.Count -gt 0) {
             Write-Host "Ocorrencias residuais encontradas:"
             $pathHits | ForEach-Object { Write-Host $_ }
@@ -112,22 +125,8 @@ jobs:
 
           if (git status --porcelain) {
             git commit -m "refactor: rename $oldName to $newName"
+            git push origin "HEAD:$env:TARGET_BRANCH"
           }
-
-          git diff HEAD^ HEAD --name-status --find-renames > rebrand-namestatus.txt
-          git show --binary --find-renames --format=fuller HEAD > rebrand.patch
-          git archive --format=zip --output=Tenebris-Rebrand-Source.zip HEAD
-
-      - name: Upload rebrand snapshot
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Tenebris-Rebrand
-          path: |
-            rebrand-namestatus.txt
-            rebrand.patch
-            Tenebris-Rebrand-Source.zip
-          if-no-files-found: error
 
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -138,12 +137,13 @@ jobs:
         shell: pwsh
         run: |
           $oldName = ('Lu' + 'men')
-          $pathHits = @(git ls-files | Select-String -Pattern $oldName -SimpleMatch -CaseSensitive:$false)
-          $contentHits = @(git grep -n -i -I -- $oldName 2>$null)
+          $legacyWorkflow = ".github/workflows/build-$($oldName.ToLower())-pr.yml"
+          $pathHits = @(git ls-files | Where-Object { $_ -ne $legacyWorkflow } | Select-String -Pattern $oldName -SimpleMatch -CaseSensitive:$false)
+          $contentHits = @(git grep -n -i -I -- $oldName -- ':!/.github/workflows/*' 2>$null)
           if ($pathHits.Count -gt 0 -or $contentHits.Count -gt 0) {
             $pathHits | ForEach-Object { Write-Host $_ }
             $contentHits | ForEach-Object { Write-Host $_ }
-            throw "Ocorrencias do nome antigo ainda existem."
+            throw "Ocorrencias do nome antigo ainda existem fora do nome temporario do workflow."
           }
           if (-not (Test-Path "Tenebris")) { throw "Diretorio Tenebris ausente." }
           if (Test-Path "Tenebris.dll") { throw "DLL antiga rastreada na raiz ainda existe." }
