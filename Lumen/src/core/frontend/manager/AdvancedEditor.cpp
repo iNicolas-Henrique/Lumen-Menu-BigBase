@@ -49,6 +49,12 @@ namespace YimMenu
 		if (ImGui::Begin("##LumenAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
 		{
 			ImGui::SetWindowFontScale(0.88f);
+
+			// Backspace fecha apenas o editor avancado. Se o usuario estiver digitando
+			// em um campo de texto, a tecla continua funcionando normalmente no campo.
+			if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Backspace, false))
+				open = false;
+
 			ImGui::TextUnformatted("EDITOR AVANCADO DO LUMEN");
 			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
 			if (ImGui::SmallButton("X"))
