@@ -50,7 +50,7 @@ namespace YimMenu::Submenus
 		editor->AddItem(std::make_unique<ImGuiItem>([] {
 			DrawSavedVariable(cur_global);
 			DrawSavedVariableEdit(cur_global, cur_global.Read());
-		}));
+		}, "Editor de global", "Permite visualizar e editar o valor da global selecionada.", 360.0f));
 
 		auto saved = std::make_unique<Group>("Saved");
 		saved->AddItem(std::make_unique<ImGuiItem>([] {
@@ -95,7 +95,7 @@ namespace YimMenu::Submenus
 			}
 
 			ImGui::EndGroup();
-		}));
+		}, "Globals salvas", "Gerencia as globals salvas e permite selecionar, salvar ou excluir entradas.", 430.0f));
 
 		globals->AddItem(std::move(editor));
 		globals->AddItem(std::move(saved));
