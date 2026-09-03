@@ -56,7 +56,6 @@ jobs:
           tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode('utf-8').split('\0')
           tracked = [p for p in tracked if p]
 
-          # Rename every remaining tracked path containing the former project name.
           for src in sorted(tracked, key=lambda p: (p.count('/'), len(p)), reverse=True):
               dst = replace_name(src)
               if dst == src:
@@ -78,19 +77,19 @@ jobs:
               if updated != text:
                   path.write_text(updated, encoding='utf-8', newline='')
 
-          # Replace the old block-letter console logo, whose letters were separated
-          # and therefore are not covered by a normal project-name replacement.
           main_path = pathlib.Path('Tenebris/src/main.cpp')
           main_text = main_path.read_text(encoding='utf-8')
-          banner = r'''LOG(INFO) << R"(
- _______ ______ _   _ ______ ____  _____  _____ _____
-|__   __|  ____| \ | |  ____|  _ \|  __ \|_   _/ ____|
-   | |  | |__  |  \| | |__  | |_) | |__) | | || (___
-   | |  |  __| | . ` |  __| |  _ <|  _  /  | | \___ \
-   | |  | |____| |\  | |____| |_) | | \ \ _| |_ ____) |
-   |_|  |______|_| \_|______|____/|_|  \_\_____|_____/
-                T E N E B R I S
-)";'''
+          banner = '\n'.join([
+              'LOG(INFO) << R"(',
+              ' _______ ______ _   _ ______ ____  _____  _____ _____',
+              '|__   __|  ____| \\ | |  ____|  _ \\|  __ \\|_   _/ ____|',
+              '   | |  | |__  |  \\| | |__  | |_) | |__) | | || (___',
+              '   | |  |  __| | . ` |  __| |  _ <|  _  /  | | \\___ \\',
+              '   | |  | |____| |\\  | |____| |_) | | \\ \\ _| |_ ____) |',
+              '   |_|  |______|_| \\_|______|____/|_|  \\_\\_____|_____/',
+              '                T E N E B R I S',
+              ')";'
+          ])
           pattern = re.compile(r'LOG\(INFO\) << R"\(\r?\n _      _.*?\r?\n\)";', re.S)
           main_text, count = pattern.subn(lambda _m: banner, main_text, count=1)
           if count != 1:
