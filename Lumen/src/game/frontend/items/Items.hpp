@@ -169,8 +169,8 @@ namespace YimMenu
 	{
 	public:
 		explicit ImGuiItem(std::function<void()> callback,
-		    std::string label,
-		    std::string description,
+		    std::string label = "Controles",
+		    std::string description = "Abre os controles desta secao.",
 		    float preferred_editor_height = 520.0f);
 		void Draw() override;
 		std::string_view GetMenuLabel() const override
