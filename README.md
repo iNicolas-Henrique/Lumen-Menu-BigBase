@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✦ L U M E N ✦
+# ✦ T E N E B R I S ✦
 
 ### Um menu de ferramentas para Red Dead Redemption 2
 
