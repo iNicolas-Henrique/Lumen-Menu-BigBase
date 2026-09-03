@@ -10,9 +10,9 @@ Interface compacta, navegação por teclado e recursos organizados para estudo, 
 
 ---
 
-## O que é o Lumen?
+## O que é o Tenebris?
 
-O **Lumen** é um projeto independente e educacional em C++ para **Red Dead Redemption 2**. Ele reúne ferramentas de personagem, teleporte, mundo, jogadores, rede, configurações e depuração em um menu clássico, leve e acessível por teclado.
+O **Tenebris** é um projeto independente e educacional em C++ para **Red Dead Redemption 2**. Ele reúne ferramentas de personagem, teleporte, mundo, jogadores, rede, configurações e depuração em um menu clássico, leve e acessível por teclado.
 
 O foco do projeto é aprender sobre interfaces, renderização, organização de software e integração com o jogo sem abandonar a clareza para quem apenas deseja entender e testar o menu.
 
@@ -27,9 +27,9 @@ O foco do projeto é aprender sobre interfaces, renderização, organização de
 
 ## Instalação
 
-1. Baixe uma versão publicada do Lumen.
+1. Baixe uma versão publicada do Tenebris.
 2. Extraia o conteúdo mantendo os arquivos do pacote juntos.
-3. Leia as observações da versão antes de utilizar `Lumen.dll`.
+3. Leia as observações da versão antes de utilizar `Tenebris.dll`.
 4. Abra ou feche o menu com **F5** ou **Insert**, conforme a configuração escolhida.
 
 ## Compilação
@@ -37,8 +37,8 @@ O foco do projeto é aprender sobre interfaces, renderização, organização de
 O projeto utiliza CMake e foi preparado para Windows 64-bit:
 
 ```bat
-cmake -S Lumen -B Lumen/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build Lumen/build --config RelWithDebInfo --target Lumen
+cmake -S Tenebris -B Tenebris/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build Tenebris/build --config RelWithDebInfo --target Tenebris
 ```
 
 Dependências externas podem exigir acesso à internet durante a primeira configuração.
@@ -49,7 +49,7 @@ Ao relatar um problema, informe a resolução, versão do Windows, GPU, renderer
 
 ## Créditos
 
-O Lumen existe graças ao trabalho e ao aprendizado proporcionados por projetos da comunidade:
+O Tenebris existe graças ao trabalho e ao aprendizado proporcionados por projetos da comunidade:
 
 - **YimMenu** — arquitetura, padrões de comandos, proteções e base de conhecimento;
 - **HorseMenu** — referência no ecossistema de menus para Red Dead Redemption 2;
@@ -60,13 +60,13 @@ Os créditos e avisos de terceiros também estão registrados em [`THIRD_PARTY_N
 
 ## Uso responsável
 
-Este software é fornecido para **fins educacionais, pesquisa e desenvolvimento**. O Lumen não possui vínculo com Rockstar Games ou Take-Two Interactive. Não utilize o projeto para prejudicar jogadores, interromper serviços ou violar leis e termos aplicáveis.
+Este software é fornecido para **fins educacionais, pesquisa e desenvolvimento**. O Tenebris não possui vínculo com Rockstar Games ou Take-Two Interactive. Não utilize o projeto para prejudicar jogadores, interromper serviços ou violar leis e termos aplicáveis.
 
 O software é fornecido sem garantias. O usuário é responsável por seu uso, por seus dados e por eventuais consequências.
 
 <div align="center">
 
-### Lumen
+### Tenebris
 
 **Clareza, controle e aprendizado.**
 
@@ -77,5 +77,5 @@ O software é fornecido sem garantias. O usuário é responsável por seu uso, p
 Para detectar blocos duplicados, chaves quebradas e o retorno do tema antigo:
 
 ```bash
-python Lumen/tools/verify_frontend_structure.py
+python Tenebris/tools/verify_frontend_structure.py
 ```
