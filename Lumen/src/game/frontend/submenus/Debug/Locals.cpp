@@ -44,17 +44,13 @@ namespace YimMenu::Submenus
 		})();
 
 		static char local_name[255]{};
-
 		static SavedLocal cur_local{};
-
 		static rage::scrThread* cur_thread = nullptr;
 		static const char* cur_script_name = nullptr;
 		static std::uint32_t cur_script_hash = 0;
 
 		auto script = std::make_unique<Group>("Script");
-
 		script->AddItem(std::make_unique<ImGuiItem>([] {
-			// TODO: pointless code reduplication
 			if (!Pointers.ScriptThreads || Pointers.ScriptThreads->size() == 0)
 			{
 				cur_thread = nullptr;
@@ -65,40 +61,32 @@ namespace YimMenu::Submenus
 			ImGui::SetNextItemWidth(225.0f);
 			if (ImGui::BeginCombo("Thread", cur_thread ? cur_script_name : "(Select)"))
 			{
-				for (auto script : *Pointers.ScriptThreads)
+				for (auto thread : *Pointers.ScriptThreads)
 				{
-					if (script)
+					if (thread)
 					{
-						if (script->m_Context.m_State == rage::eThreadState::killed || script->m_Context.m_StackSize == 0)
+						if (thread->m_Context.m_State == rage::eThreadState::killed || thread->m_Context.m_StackSize == 0)
 							continue;
 
-						ImGui::PushID(script->m_Context.m_ThreadId);
-
-						auto script_name = Scripts::GetScriptName(script->m_Context.m_ScriptHash);
-
-						if (ImGui::Selectable(script_name, cur_thread == script))
+						ImGui::PushID(thread->m_Context.m_ThreadId);
+						auto script_name = Scripts::GetScriptName(thread->m_Context.m_ScriptHash);
+						if (ImGui::Selectable(script_name, cur_thread == thread))
 						{
-							cur_thread      = script;
+							cur_thread = thread;
 							cur_script_name = script_name;
-							cur_script_hash = script->m_Context.m_ScriptHash;
+							cur_script_hash = thread->m_Context.m_ScriptHash;
 						}
-
-						if (cur_thread == script)
+						if (cur_thread == thread)
 							ImGui::SetItemDefaultFocus();
-
 						ImGui::PopID();
 					}
 				}
-
 				ImGui::EndCombo();
 			}
 
 			if (cur_thread && (cur_thread->m_Context.m_ScriptHash != cur_script_hash || cur_thread->m_Context.m_StackSize == 0 || cur_thread->m_Context.m_State == rage::eThreadState::killed))
 				cur_thread = nullptr;
-
-			if (!cur_thread)
-				return;
-		}));
+		}, "Selecionar script", "Seleciona a thread de script usada para visualizar e editar variaveis locais.", 240.0f));
 
 		auto editor = std::make_unique<Group>("Editor");
 		editor->AddItem(std::make_unique<ImGuiItem>([] {
@@ -107,10 +95,9 @@ namespace YimMenu::Submenus
 				ImGui::TextDisabled("Invalid");
 				return;
 			}
-
 			DrawSavedVariable(cur_local);
 			DrawSavedVariableEdit(cur_local, cur_local.Read(cur_thread));
-		}));
+		}, "Editor de local", "Permite visualizar e editar o valor local da thread de script selecionada.", 360.0f));
 
 		auto saved = std::make_unique<Group>("Saved");
 		saved->AddItem(std::make_unique<ImGuiItem>([] {
@@ -121,11 +108,9 @@ namespace YimMenu::Submenus
 			}
 
 			auto script_idf = Scripts::GetScriptIdentifier(cur_thread);
-
-			// refresh local if script changes (TODO not always the best idea)
 			if (script_idf != cur_local.script)
 			{
-				cur_local        = SavedLocal();
+				cur_local = SavedLocal();
 				cur_local.script = script_idf;
 			}
 
@@ -135,7 +120,6 @@ namespace YimMenu::Submenus
 				{
 					if (var.script != script_idf)
 						continue;
-
 					if (ImGui::Selectable(var.name.c_str(), var.name == cur_local.name))
 					{
 						cur_local = var;
@@ -151,14 +135,12 @@ namespace YimMenu::Submenus
 				{
 					if (var.script != script_idf)
 						continue;
-
 					DrawSavedVariablePreview(var, var.Read(cur_thread));
 				}
 				ImGui::EndListBox();
 			}
 
 			ImGui::BeginGroup();
-
 			ImGui::SetNextItemWidth(200.f);
 			ImGui::InputText("##local_name", local_name, sizeof(local_name));
 			ImGui::SameLine();
@@ -174,9 +156,8 @@ namespace YimMenu::Submenus
 				DeleteLocal(cur_local);
 				cur_local = SavedLocal();
 			}
-
 			ImGui::EndGroup();
-		}));
+		}, "Locais salvos", "Gerencia variaveis locais salvas para a thread de script selecionada.", 430.0f));
 
 		locals->AddItem(std::move(script));
 		locals->AddItem(std::move(editor));
