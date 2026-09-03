@@ -28,6 +28,13 @@ jobs:
           $oldName = ('Lu' + 'men')
           $pathHits = @(git ls-files | Select-String -Pattern $oldName -SimpleMatch -CaseSensitive:$false)
           $contentHits = @(git grep -n -i -I -- $oldName 2>$null)
+          $grepExit = $LASTEXITCODE
+          if ($grepExit -ne 0 -and $grepExit -ne 1) {
+            throw "Falha ao verificar o nome antigo no conteudo rastreado."
+          }
+          if ($grepExit -eq 1) {
+            $contentHits = @()
+          }
           if ($pathHits.Count -gt 0 -or $contentHits.Count -gt 0) {
             $pathHits | ForEach-Object { Write-Host $_ }
             $contentHits | ForEach-Object { Write-Host $_ }
@@ -38,6 +45,7 @@ jobs:
           if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "T E N E B R I S" -Quiet)) {
             throw "Logo TENEBRIS do console ausente."
           }
+          exit 0
 
       - name: Configure CMake
         shell: pwsh
