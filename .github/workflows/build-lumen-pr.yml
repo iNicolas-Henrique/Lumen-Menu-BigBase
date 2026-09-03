@@ -37,7 +37,7 @@ jobs:
       - name: Build DLL
         shell: pwsh
         run: |
-          cmake --build Lumen/build --parallel 2
+          cmake --build Lumen/build --parallel 8
 
       - name: Show produced DLL
         shell: pwsh
