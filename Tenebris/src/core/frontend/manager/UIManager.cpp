@@ -183,7 +183,7 @@ namespace YimMenu
 		const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 1.8f);
 		const ImU32 animatedGreen = ImGui::ColorConvertFloat4ToU32(ImVec4((34.0f + 18.0f * pulse) / 255.0f, (48.0f + 29.0f * pulse) / 255.0f, (11.0f + 3.0f * pulse) / 255.0f, 1.0f));
 		drawList->AddRectFilledMultiColor(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kHeaderHeight), kDarkGreen, animatedGreen, kLightGreen, kDarkGreen);
-		const char* brand = "L U M E N";
+		const char* brand = "T E N E B R I S";
 		const ImFont* brandFont = m_OptionsFont ? m_OptionsFont : ImGui::GetFont();
 		const float brandSize = brandFont->FontSize * layout.Scale;
 		const float brandWidth = brandFont->CalcTextSizeA(brandSize, FLT_MAX, 0.0f, brand).x;
