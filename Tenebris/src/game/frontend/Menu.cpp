@@ -1,6 +1,7 @@
 #include "Menu.hpp"
 
 #include "core/commands/Commands.hpp"
+#include "core/frontend/manager/AdvancedEditor.hpp"
 #include "core/frontend/manager/UIManager.hpp"
 #include "core/renderer/Renderer.hpp"
 #include "game/backend/FiberPool.hpp"
@@ -76,7 +77,10 @@ namespace YimMenu
 		Renderer::AddRendererCallBack(
 		    [] {
 			    if (!GUI::IsOpen())
+			    {
+				    AdvancedEditor::Close();
 				    return;
+			    }
 
 			    static bool runtimeInfoLoaded = false;
 			    if (!runtimeInfoLoaded)
