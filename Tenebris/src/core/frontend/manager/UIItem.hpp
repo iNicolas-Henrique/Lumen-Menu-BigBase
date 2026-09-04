@@ -51,6 +51,12 @@ namespace YimMenu
 		{
 			return 240.0f;
 		}
+		virtual void OnEditorOpened()
+		{
+		}
+		virtual void OnEditorClosed()
+		{
+		}
 		virtual bool IsVisible() const
 		{
 			return true;
