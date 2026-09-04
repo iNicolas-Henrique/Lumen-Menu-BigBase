@@ -192,7 +192,7 @@ namespace YimMenu::Submenus
 
         ImGui::Spacing();
         ImGui::Separator();
-        const auto currentSelected = YimMenu::Players::GetSelected();
+        auto currentSelected = YimMenu::Players::GetSelected();
         if (currentSelected.IsValid())
             ImGui::TextDisabled("Selecionado: %s", currentSelected.GetName());
     }
