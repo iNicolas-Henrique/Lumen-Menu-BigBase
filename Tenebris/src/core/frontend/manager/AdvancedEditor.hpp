@@ -11,5 +11,6 @@ namespace YimMenu
 		static void Close();
 		static void Draw();
 		static bool IsOpen();
+		static bool HandleKey(int key);
 	};
 }
