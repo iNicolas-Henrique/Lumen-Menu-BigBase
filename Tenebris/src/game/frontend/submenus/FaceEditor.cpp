@@ -2,6 +2,7 @@
 
 #include "core/frontend/manager/Category.hpp"
 #include "core/frontend/manager/Submenu.hpp"
+#include "core/frontend/manager/UIItem.hpp"
 #include "game/frontend/items/Items.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "game/rdr/Natives.hpp"
@@ -20,6 +21,8 @@ namespace YimMenu::Submenus
 		constexpr rage::scrNativeHash kSetFaceFeature = 0x5653AB26C82938CF;
 		constexpr rage::scrNativeHash kGetFaceFeature = 0xFD1BA1EEF7985BB8;
 		constexpr rage::scrNativeHash kUpdatePedVariation = 0xCC8CA3E88256E58F;
+
+		Cam g_FaceCamera{};
 
 		struct FaceFeature
 		{
@@ -103,6 +106,56 @@ namespace YimMenu::Submenus
 			return invoker.GetReturnValue<Ret>();
 		}
 
+		void StopFaceCamera()
+		{
+			if (!g_FaceCamera || !CAM::DOES_CAM_EXIST(g_FaceCamera))
+			{
+				g_FaceCamera = 0;
+				return;
+			}
+
+			CAM::RENDER_SCRIPT_CAMS(false, true, 400, true, true, 0);
+			CAM::DETACH_CAM(g_FaceCamera);
+			CAM::SET_CAM_ACTIVE(g_FaceCamera, false);
+			CAM::DESTROY_CAM(g_FaceCamera, true);
+			g_FaceCamera = 0;
+		}
+
+		void StartFaceCamera()
+		{
+			const Ped ped = PLAYER::PLAYER_PED_ID();
+			if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped))
+				return;
+
+			StopFaceCamera();
+			g_FaceCamera = CAM::CREATE_CAM("DEFAULT_SCRIPTED_CAMERA", true);
+			if (!g_FaceCamera || !CAM::DOES_CAM_EXIST(g_FaceCamera))
+			{
+				g_FaceCamera = 0;
+				return;
+			}
+
+			// Mantem a camera na frente do personagem, enquadrada no rosto.
+			CAM::ATTACH_CAM_TO_ENTITY(g_FaceCamera, ped, 0.0f, 0.92f, 1.62f, true);
+			CAM::POINT_CAM_AT_ENTITY(g_FaceCamera, ped, 0.0f, 0.0f, 1.56f, true);
+			CAM::SET_CAM_FOV(g_FaceCamera, 28.0f);
+			CAM::SET_CAM_NEAR_CLIP(g_FaceCamera, 0.05f);
+			CAM::SET_CAM_ACTIVE(g_FaceCamera, true);
+			CAM::RENDER_SCRIPT_CAMS(true, true, 450, true, true, 0);
+		}
+
+		void EnsureFaceCamera(Ped ped)
+		{
+			if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped))
+			{
+				StopFaceCamera();
+				return;
+			}
+
+			if (!g_FaceCamera || !CAM::DOES_CAM_EXIST(g_FaceCamera))
+				StartFaceCamera();
+		}
+
 		void UpdateFace(Ped ped)
 		{
 			InvokeRawVoid(kUpdatePedVariation, ped, false, true, true, true, false);
@@ -137,6 +190,14 @@ namespace YimMenu::Submenus
 			static bool nativeAvailable = true;
 
 			const Ped ped = PLAYER::PLAYER_PED_ID();
+			if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped))
+			{
+				ImGui::TextDisabled("Personagem local indisponivel.");
+				StopFaceCamera();
+				return;
+			}
+
+			EnsureFaceCamera(ped);
 
 			auto readCurrentFace = [&] {
 				nativeAvailable = true;
@@ -157,7 +218,7 @@ namespace YimMenu::Submenus
 			if (!initialized || loadedPed != ped)
 				readCurrentFace();
 
-			ImGui::TextWrapped("Ajusta somente o rosto e a cabeca do seu personagem atual. As mudancas podem ser reaplicadas pelo proprio jogo ao trocar de aparencia ou sessao.");
+			ImGui::TextWrapped("Ajusta somente o rosto e a cabeca do seu personagem atual. A camera aproxima automaticamente e volta ao normal quando voce sair do editor.");
 			ImGui::Spacing();
 
 			if (ImGui::Button("Ler rosto atual"))
@@ -199,6 +260,45 @@ namespace YimMenu::Submenus
 			if (ImGui::CollapsingHeader("Boca e labios", ImGuiTreeNodeFlags_DefaultOpen))
 				DrawFeatureRange(ped, values, 29, 39, nativeAvailable);
 		}
+
+		class FaceEditorItem final : public UIItem
+		{
+		public:
+			void Draw() override
+			{
+				RenderFaceEditor();
+			}
+
+			std::string_view GetMenuLabel() const override
+			{
+				return "Editor de rosto";
+			}
+
+			std::string_view GetMenuDescription() const override
+			{
+				return "Altera sobrancelhas, olhos, nariz, boca, maxilar, queixo, orelhas e formato da cabeca do seu personagem.";
+			}
+
+			bool RequiresImGuiEditor() const override
+			{
+				return true;
+			}
+
+			float GetPreferredEditorHeight() const override
+			{
+				return 560.0f;
+			}
+
+			void OnEditorOpened() override
+			{
+				StartFaceCamera();
+			}
+
+			void OnEditorClosed() override
+			{
+				StopFaceCamera();
+			}
+		};
 	}
 
 	void InstallFaceEditor(const std::shared_ptr<Submenu>& selfSubmenu)
@@ -207,13 +307,7 @@ namespace YimMenu::Submenus
 			return;
 
 		auto faceCategory = std::make_shared<Category>("Rosto e cabeca");
-		faceCategory->AddItem(std::make_shared<ImGuiItem>(
-		    [] {
-			    RenderFaceEditor();
-		    },
-		    "Editor de rosto",
-		    "Altera sobrancelhas, olhos, nariz, boca, maxilar, queixo, orelhas e formato da cabeca do seu personagem.",
-		    560.0f));
+		faceCategory->AddItem(std::make_shared<FaceEditorItem>());
 		selfSubmenu->AddCategory(std::move(faceCategory));
 	}
 }
