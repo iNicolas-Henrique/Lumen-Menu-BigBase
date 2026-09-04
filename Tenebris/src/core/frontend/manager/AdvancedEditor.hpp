@@ -8,6 +8,7 @@ namespace YimMenu
 	{
 	public:
 		static void Open(UIItem* item);
+		static void Close();
 		static void Draw();
 		static bool IsOpen();
 	};
