@@ -77,6 +77,14 @@ namespace YimMenu
 
 	void UIManager::HandleKeyImpl(WPARAM key)
 	{
+		// Quando um editor avancado esta aberto, ele tem foco exclusivo do teclado.
+		// Isso impede que as setas alterem o menu principal por tras do editor.
+		if (AdvancedEditor::IsOpen())
+		{
+			AdvancedEditor::HandleKey(static_cast<int>(key));
+			return;
+		}
+
 		const std::size_t count = GetEntryCount();
 		if (count > 0 && m_Selected >= count)
 			m_Selected = count - 1;
