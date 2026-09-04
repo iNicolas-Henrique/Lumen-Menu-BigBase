@@ -12,7 +12,23 @@ namespace YimMenu
 
 	void AdvancedEditor::Open(UIItem* item)
 	{
+		if (!item || g_Item == item)
+			return;
+
+		if (g_Item)
+			g_Item->OnEditorClosed();
+
 		g_Item = item;
+		g_Item->OnEditorOpened();
+	}
+
+	void AdvancedEditor::Close()
+	{
+		if (!g_Item)
+			return;
+
+		g_Item->OnEditorClosed();
+		g_Item = nullptr;
 	}
 
 	void AdvancedEditor::Draw()
@@ -75,7 +91,7 @@ namespace YimMenu
 		ImGui::PopStyleVar(5);
 
 		if (!open)
-			g_Item = nullptr;
+			Close();
 	}
 
 	bool AdvancedEditor::IsOpen()
