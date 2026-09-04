@@ -3,6 +3,8 @@
 #include "ResponsiveLayout.hpp"
 #include "UIItem.hpp"
 
+#include <Windows.h>
+
 namespace YimMenu
 {
 	namespace
@@ -29,6 +31,20 @@ namespace YimMenu
 
 		g_Item->OnEditorClosed();
 		g_Item = nullptr;
+	}
+
+	bool AdvancedEditor::HandleKey(int key)
+	{
+		if (!g_Item)
+			return false;
+
+		if (key == VK_BACK || key == VK_ESCAPE)
+		{
+			Close();
+			return true;
+		}
+
+		return g_Item->HandleEditorKey(key);
 	}
 
 	void AdvancedEditor::Draw()
@@ -65,11 +81,6 @@ namespace YimMenu
 		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
 		{
 			ImGui::SetWindowFontScale(0.88f);
-
-			// Backspace fecha apenas o editor avancado. Se o usuario estiver digitando
-			// em um campo de texto, a tecla continua funcionando normalmente no campo.
-			if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Backspace, false))
-				open = false;
 
 			ImGui::TextUnformatted("EDITOR AVANCADO DO TENEBRIS");
 			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
