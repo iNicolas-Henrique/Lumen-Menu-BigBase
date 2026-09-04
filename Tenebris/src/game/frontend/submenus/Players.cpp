@@ -31,7 +31,7 @@ namespace YimMenu::Submenus
             tags.push_back({"HOST", ImGui::Colors::DeepSkyBlue});
 
         if (player.IsModder())
-            tags.push_back({"MOD", ImGui::Colors::DeepPink});
+            tags.push_back({"HACKER", ImGui::Colors::DeepPink});
 
         if (player.GetPed() && player.GetPed().IsInvincible())
             tags.push_back({"GOD", ImGui::Colors::Crimson});
@@ -40,6 +40,36 @@ namespace YimMenu::Submenus
             tags.push_back({"INVIS", ImGui::Colors::MediumPurple});
 
         return tags;
+    }
+
+    static void DrawModderTooltip(YimMenu::Player player)
+    {
+        if (!player.IsModder() || !ImGui::IsItemHovered())
+            return;
+
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted("Detectado pelo Tenebris:");
+        for (auto detection : player.GetData().m_Detections)
+            ImGui::BulletText("%s", g_PlayerDatabase->ConvertDetectionToDescription(detection).c_str());
+        ImGui::EndTooltip();
+    }
+
+    static void DrawTags(YimMenu::Player player)
+    {
+        const auto tags = GetPlayerTags(player);
+        if (tags.empty())
+        {
+            ImGui::TextDisabled("-");
+            return;
+        }
+
+        for (std::size_t i = 0; i < tags.size(); ++i)
+        {
+            if (i > 0)
+                ImGui::SameLine(0.0f, 4.0f);
+
+            ImGui::TextColored(tags[i].Color, "[%s]", tags[i].Name.c_str());
+        }
     }
 
     static void DrawPlayerList(bool external = true, float offset = 15.0f)
@@ -71,64 +101,68 @@ namespace YimMenu::Submenus
 
                 ImGui::PushID(id);
                 if (ImGui::Selectable(display_name.c_str(), (YimMenu::Players::GetSelected() == player)))
-                {
                     YimMenu::Players::SetSelected(id);
-                }
+                DrawModderTooltip(player);
+                DrawTags(player);
                 ImGui::PopID();
-
-                if (player.IsModder() && ImGui::IsItemHovered())
-                {
-                    ImGui::BeginTooltip();
-                    for (auto detection : player.GetData().m_Detections)
-                        ImGui::BulletText("%s", g_PlayerDatabase->ConvertDetectionToDescription(detection).c_str());
-                    ImGui::EndTooltip();
-                }
-
-                auto tags = GetPlayerTags(player);
-
-                auto old_item_spacing = ImGui::GetStyle().ItemSpacing.x;
-
-                for (auto& tag : tags)
-                {
-                    ImGui::SameLine();
-                    ImGui::PushStyleColor(ImGuiCol_Text, tag.Color);
-                    ImGui::Text(("[" + tag.Name + "]").c_str());
-                    ImGui::PopStyleColor();
-                    ImGui::GetStyle().ItemSpacing.x = 1;
-                }
-
-                ImGui::GetStyle().ItemSpacing.x = old_item_spacing;
             }
             ImGui::End();
+            return;
         }
-        else
+
+        if (sortedPlayers.empty())
         {
-            if (sortedPlayers.empty())
-            {
-                ImGui::TextDisabled("Nenhum jogador disponivel nesta sessao.");
-                return;
-            }
-
-            auto selected = YimMenu::Players::GetSelected();
-            if (!selected.IsValid())
-            {
-                YimMenu::Players::SetSelected(sortedPlayers.begin()->first);
-                selected = YimMenu::Players::GetSelected();
-            }
-
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::BeginCombo("Jogador", selected.GetName()))
-            {
-                for (auto& [id, player] : sortedPlayers)
-                {
-                    if (ImGui::Selectable(player.GetName(), (YimMenu::Players::GetSelected() == player)))
-                    {
-                        YimMenu::Players::SetSelected(id);
-                    }
-                }
-                ImGui::EndCombo();
-            }
+            ImGui::TextDisabled("Nenhum jogador disponivel nesta sessao.");
+            return;
         }
+
+        auto selected = YimMenu::Players::GetSelected();
+        if (!selected.IsValid())
+        {
+            YimMenu::Players::SetSelected(sortedPlayers.begin()->first);
+            selected = YimMenu::Players::GetSelected();
+        }
+
+        ImGui::TextDisabled("%zu jogador(es) na sessao", sortedPlayers.size());
+        ImGui::Spacing();
+
+        constexpr ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg
+            | ImGuiTableFlags_BordersInnerH
+            | ImGuiTableFlags_BordersOuter
+            | ImGuiTableFlags_SizingStretchProp;
+
+        if (ImGui::BeginTable("##TenebrisPlayerList", 2, tableFlags))
+        {
+            ImGui::TableSetupColumn("Jogador", ImGuiTableColumnFlags_WidthStretch, 0.62f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 0.38f);
+            ImGui::TableHeadersRow();
+
+            for (auto& [id, player] : sortedPlayers)
+            {
+                if (!player.IsValid())
+                    continue;
+
+                ImGui::PushID(id);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+
+                const bool isSelected = YimMenu::Players::GetSelected() == player;
+                const std::string displayName = player.GetName();
+                if (ImGui::Selectable(displayName.c_str(), isSelected, ImGuiSelectableFlags_None, ImVec2(-FLT_MIN, 0.0f)))
+                    YimMenu::Players::SetSelected(id);
+                DrawModderTooltip(player);
+
+                ImGui::TableSetColumnIndex(1);
+                DrawTags(player);
+                ImGui::PopID();
+            }
+
+            ImGui::EndTable();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("Selecionado: %s", YimMenu::Players::GetSelected().GetName());
     }
 
     Players::Players() : Submenu::Submenu("Jogadores")
@@ -142,9 +176,7 @@ namespace YimMenu::Submenus
 
         for (auto& category : m_Categories)
             category->PrependItem(std::make_shared<ImGuiItem>([] {
-                // The classic menu already owns the containing window. Rendering
-                // another external window here placed the list off-screen.
                 DrawPlayerList(false);
-            }, "Selecionar jogador", "Escolha o jogador usado pelas opcoes desta categoria."));
+            }, "Selecionar jogador", "Mostra os jogadores em lista organizada e escolhe quem sera usado pelas opcoes desta categoria.", 520.0f));
     }
 }
