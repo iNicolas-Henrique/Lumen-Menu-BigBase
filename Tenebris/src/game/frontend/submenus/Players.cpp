@@ -13,7 +13,11 @@
 #include "Player/Toxic.hpp"
 #include "Player/Trolling.hpp"
 #include "BoomPlus.hpp" // This includes the UI elements for Zombies/Indian Attack
-// REMOVED #include "Player/Zombies.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <vector>
 
 namespace YimMenu::Submenus
 {
@@ -72,35 +76,61 @@ namespace YimMenu::Submenus
         }
     }
 
+    static std::string GetDisplayName(uint8_t id, YimMenu::Player player)
+    {
+        std::string name = player.GetName();
+        if (name.empty())
+            name = std::format("Jogador #{}", static_cast<unsigned int>(id));
+        return name;
+    }
+
+    static std::string Lowercase(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        return value;
+    }
+
+    static std::vector<std::pair<uint8_t, Player>> GetSortedPlayers()
+    {
+        std::vector<std::pair<uint8_t, Player>> sortedPlayers;
+        sortedPlayers.reserve(YimMenu::Players::GetPlayers().size());
+
+        for (const auto& [id, player] : YimMenu::Players::GetPlayers())
+        {
+            if (player.IsValid())
+                sortedPlayers.emplace_back(id, player);
+        }
+
+        std::sort(sortedPlayers.begin(), sortedPlayers.end(), [](const auto& left, const auto& right) {
+            const auto leftName = Lowercase(GetDisplayName(left.first, left.second));
+            const auto rightName = Lowercase(GetDisplayName(right.first, right.second));
+            if (leftName == rightName)
+                return left.first < right.first;
+            return leftName < rightName;
+        });
+
+        return sortedPlayers;
+    }
+
     static void DrawPlayerList(bool external = true, float offset = 15.0f)
     {
-        struct ComparePlayerNames
-        {
-            bool operator()(YimMenu::Player a, YimMenu::Player b) const
-            {
-                std::string nameA = a.GetName();
-                std::string nameB = b.GetName();
-                return nameA < nameB;
-            }
-        };
-
-        std::multimap<uint8_t, Player, ComparePlayerNames> sortedPlayers(YimMenu::Players::GetPlayers().begin(),
-            YimMenu::Players::GetPlayers().end());
+        auto sortedPlayers = GetSortedPlayers();
 
         if (external)
         {
             ImGui::SetNextWindowPos(
                 ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x + offset, ImGui::GetWindowPos().y));
-            ImGui::SetNextWindowSize(ImVec2(215, ImGui::GetWindowSize().y));
+            ImGui::SetNextWindowSize(ImVec2(260, ImGui::GetWindowSize().y));
             ImGui::Begin("Player List", nullptr, ImGuiWindowFlags_NoDecoration);
 
             ImGui::Checkbox("Spectate", &YimMenu::g_Spectating);
             for (auto& [id, player] : sortedPlayers)
             {
-                std::string display_name = player.GetName();
-
-                ImGui::PushID(id);
-                if (ImGui::Selectable(display_name.c_str(), (YimMenu::Players::GetSelected() == player)))
+                const std::string displayName = GetDisplayName(id, player);
+                ImGui::PushID(static_cast<int>(id));
+                if (ImGui::Selectable(displayName.c_str(), YimMenu::Players::GetSelected() == player))
                     YimMenu::Players::SetSelected(id);
                 DrawModderTooltip(player);
                 DrawTags(player);
@@ -119,7 +149,7 @@ namespace YimMenu::Submenus
         auto selected = YimMenu::Players::GetSelected();
         if (!selected.IsValid())
         {
-            YimMenu::Players::SetSelected(sortedPlayers.begin()->first);
+            YimMenu::Players::SetSelected(sortedPlayers.front().first);
             selected = YimMenu::Players::GetSelected();
         }
 
@@ -133,22 +163,22 @@ namespace YimMenu::Submenus
 
         if (ImGui::BeginTable("##TenebrisPlayerList", 2, tableFlags))
         {
-            ImGui::TableSetupColumn("Jogador", ImGuiTableColumnFlags_WidthStretch, 0.62f);
-            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 0.38f);
+            ImGui::TableSetupColumn("Jogador", ImGuiTableColumnFlags_WidthStretch, 0.66f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 0.34f);
             ImGui::TableHeadersRow();
 
             for (auto& [id, player] : sortedPlayers)
             {
-                if (!player.IsValid())
-                    continue;
+                const std::string displayName = GetDisplayName(id, player);
+                const bool isSelected = YimMenu::Players::GetSelected() == player;
 
-                ImGui::PushID(id);
+                ImGui::PushID(static_cast<int>(id));
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
 
-                const bool isSelected = YimMenu::Players::GetSelected() == player;
-                const std::string displayName = player.GetName();
-                if (ImGui::Selectable(displayName.c_str(), isSelected, ImGuiSelectableFlags_None, ImVec2(-FLT_MIN, 0.0f)))
+                // Sem largura negativa: em algumas builds do ImGui ela reduz o clip
+                // do Selectable a quase zero e deixa visivel apenas a primeira letra.
+                if (ImGui::Selectable(displayName.c_str(), isSelected))
                     YimMenu::Players::SetSelected(id);
                 DrawModderTooltip(player);
 
@@ -162,7 +192,9 @@ namespace YimMenu::Submenus
 
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("Selecionado: %s", YimMenu::Players::GetSelected().GetName());
+        const auto currentSelected = YimMenu::Players::GetSelected();
+        if (currentSelected.IsValid())
+            ImGui::TextDisabled("Selecionado: %s", currentSelected.GetName());
     }
 
     Players::Players() : Submenu::Submenu("Jogadores")
