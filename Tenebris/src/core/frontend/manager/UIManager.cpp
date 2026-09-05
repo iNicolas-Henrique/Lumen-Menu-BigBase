@@ -3,13 +3,16 @@
 #include "AdvancedEditor.hpp"
 #include "ResponsiveLayout.hpp"
 #include "core/commands/Commands.hpp"
+#include "core/frontend/Localization.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/ScriptMgr.hpp"
 #include "game/frontend/Menu.hpp"
+#include "game/rdr/Natives.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
+#include <string>
+#include <vector>
 
 namespace YimMenu
 {
@@ -29,8 +32,6 @@ namespace YimMenu
 		{
 			const ImFont* font = ImGui::GetFont();
 			const float size = ImGui::GetFontSize() * scale;
-			// Dupla passagem subpixel: preserva a fonte classica do Tenebris, mas a
-			// deixa um pouco mais encorpada sem trocar por uma fonte de sistema.
 			drawList->AddText(font, size, position, color, text.data(), text.data() + text.size());
 			if (scale >= 0.80f)
 				drawList->AddText(font, size, ImVec2(position.x + 0.42f, position.y), color, text.data(), text.data() + text.size());
@@ -44,14 +45,77 @@ namespace YimMenu
 			drawList->AddText(font, size, ImVec2(position.x + 0.32f, position.y), color, text.data(), text.data() + text.size(), width);
 		}
 
-		std::string GetPortugueseDescription(std::string_view description, std::string_view label)
+		void QueueMenuSound(const char* sound)
 		{
-			static constexpr std::array portugueseMarkers = {
-			    "Abre", "Ajusta", "Aplica", "Ativa", "Configura", "Cria", "Escolha", "Entrega", "Executa", "Mostra", "Permite", "Retorna", "Seleciona", "Reune"};
-			for (const auto marker : portugueseMarkers)
-				if (description.contains(marker))
-					return std::string(description);
-			return std::format("Permite usar ou configurar a opcao '{}'.", label);
+			if (!sound || !ScriptMgr::CanTick())
+				return;
+			FiberPool::Push([sound] {
+				AUDIO::PLAY_SOUND_FRONTEND(sound, "HUD_PLAYER_MENU", 1, 0);
+			});
+		}
+
+		ImVec2 HeaderPerimeterPoint(float distance, float x, float y, float width, float height)
+		{
+			// The path starts at the upper-right corner and follows exactly the order
+			// requested for the Tenebris trace: down -> left -> up -> right.
+			constexpr float inset = 1.5f;
+			const float left = x + inset;
+			const float right = x + width - inset;
+			const float top = y + inset;
+			const float bottom = y + height - inset;
+			const float horizontal = std::max(0.0f, right - left);
+			const float vertical = std::max(0.0f, bottom - top);
+			const float perimeter = 2.0f * (horizontal + vertical);
+			if (perimeter <= 0.0f)
+				return {left, top};
+
+			distance = std::fmod(distance, perimeter);
+			if (distance < 0.0f)
+				distance += perimeter;
+			if (distance <= vertical)
+				return {right, top + distance};
+			distance -= vertical;
+			if (distance <= horizontal)
+				return {right - distance, bottom};
+			distance -= horizontal;
+			if (distance <= vertical)
+				return {left, bottom - distance};
+			distance -= vertical;
+			return {left + std::min(distance, horizontal), top};
+		}
+
+		void DrawHeaderTrace(ImDrawList* drawList, float time, float x, float y, float width, float height, ImU32 color)
+		{
+			const float horizontal = std::max(0.0f, width - 3.0f);
+			const float vertical = std::max(0.0f, height - 3.0f);
+			const float perimeter = 2.0f * (horizontal + vertical);
+			if (perimeter <= 1.0f)
+				return;
+
+			const float head = std::fmod(time * 78.0f, perimeter);
+			const float traceLength = std::min(72.0f, perimeter * 0.16f);
+			constexpr int pieces = 24;
+			drawList->PushClipRect(ImVec2(x, y), ImVec2(x + width, y + height), true);
+			for (int i = 0; i < pieces; ++i)
+			{
+				const float a = static_cast<float>(i) / pieces;
+				const float b = static_cast<float>(i + 1) / pieces;
+				const ImVec2 p0 = HeaderPerimeterPoint(head - traceLength + traceLength * a, x, y, width, height);
+				const ImVec2 p1 = HeaderPerimeterPoint(head - traceLength + traceLength * b, x, y, width, height);
+				ImVec4 c = ImGui::ColorConvertU32ToFloat4(color);
+				c.w *= 0.18f + 0.82f * b;
+				drawList->AddLine(p0, p1, ImGui::ColorConvertFloat4ToU32(c), 1.6f);
+			}
+			drawList->PopClipRect();
+		}
+
+		std::string UsefulDescription(std::string_view description, std::string_view label)
+		{
+			if (!description.empty() && description != "Empty" && description != "Abre os controles desta secao.")
+				return Localization::Text(description);
+			if (Localization::IsPortuguese())
+				return std::format("Executa ou ajusta '{}', conforme a função selecionada.", Localization::Text(label));
+			return std::format("Runs or adjusts '{}' according to the selected function.", Localization::Text(label));
 		}
 	}
 
@@ -101,14 +165,18 @@ namespace YimMenu
 		const std::size_t count = GetEntryCount();
 		if (count > 0 && m_Selected >= count)
 			m_Selected = count - 1;
+
 		if (m_Level == Level::ConfirmShutdown && (key == VK_BACK || key == VK_LEFT))
 		{
+			QueueMenuSound("BACK");
 			m_Level = Level::Root;
 			m_Selected = m_Submenus.size();
 			return;
 		}
+
 		if (key == VK_BACK || (key == VK_LEFT && m_Level != Level::Options))
 		{
+			QueueMenuSound("BACK");
 			if (m_Level == Level::Options)
 				m_Level = Level::Categories;
 			else if (m_Level == Level::Categories)
@@ -116,6 +184,7 @@ namespace YimMenu
 			m_Selected = 0;
 			return;
 		}
+
 		if (count == 0)
 			return;
 		if (key == VK_UP)
@@ -129,6 +198,7 @@ namespace YimMenu
 		}
 		else if (key == VK_RETURN)
 		{
+			QueueMenuSound("SELECT");
 			if (m_Level == Level::ConfirmShutdown)
 			{
 				if (m_Selected == 0)
@@ -215,64 +285,94 @@ namespace YimMenu
 			const ImU32 headerBright = C(ImGui::ColorConvertFloat4ToU32(ImVec4((61.0f + 20.0f * sweep) / 255.0f, (91.0f + 25.0f * sweep) / 255.0f, (15.0f + 7.0f * sweep) / 255.0f, 1.0f)));
 			const ImU32 headerMid = C(ImGui::ColorConvertFloat4ToU32(ImVec4((45.0f + 16.0f * slowPulse) / 255.0f, (67.0f + 22.0f * slowPulse) / 255.0f, 10.0f / 255.0f, 1.0f)));
 			drawList->AddRectFilledMultiColor(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kHeaderHeight), headerLeft, headerBright, headerMid, headerLeft);
-			// Linha luminosa fina reforca o gradient sem deixar o cabecalho carregado.
-			const float highlightX = kMenuX + std::fmod(time * 72.0f, kMenuWidth + 90.0f) - 45.0f;
-			drawList->AddLine(ImVec2(highlightX, y + 1.0f), ImVec2(std::min(highlightX + 58.0f, kMenuX + kMenuWidth), y + 1.0f), C(IM_COL32(168, 207, 72, 115)), 1.5f);
+			DrawHeaderTrace(drawList, time, kMenuX, y, kMenuWidth, kHeaderHeight, C(IM_COL32(180, 220, 84, 180)));
 
-			const char* letters = "TENEBRIS";
-			constexpr int letterCount = 8;
+			std::string headerText = "TENEBRIS";
+			if (m_Level == Level::ConfirmShutdown)
+				headerText = Localization::Text("ENCERRAR TENEBRIS");
+			else if (m_Level == Level::Categories && m_ActiveSubmenu)
+				headerText = Localization::Text(m_ActiveSubmenu->m_Name);
+			else if (m_Level == Level::Options && m_ActiveSubmenu && m_ActiveSubmenu->GetActiveCategory())
+				headerText = Localization::Text(m_ActiveSubmenu->GetActiveCategory()->m_Name);
+
 			const ImFont* brandFont = m_OptionsFont ? m_OptionsFont : ImGui::GetFont();
-			const float brandSize = brandFont->FontSize * layout.Scale;
-			const float letterGap = brandSize * 0.34f;
-			float totalWidth = letterGap * static_cast<float>(letterCount - 1);
-			std::array<float, letterCount> widths{};
-			for (int i = 0; i < letterCount; ++i)
+			float brandSize = brandFont->FontSize * layout.Scale;
+			const float availableWidth = kMenuWidth - 24.0f * layout.Scale;
+			ImVec2 naturalSize = brandFont->CalcTextSizeA(brandSize, FLT_MAX, 0.0f, headerText.c_str());
+			if (naturalSize.x > availableWidth && naturalSize.x > 1.0f)
+				brandSize *= availableWidth / naturalSize.x;
+			const float letterGap = brandSize * 0.22f;
+
+			std::vector<float> widths(headerText.size(), 0.0f);
+			float totalWidth = 0.0f;
+			for (std::size_t i = 0; i < headerText.size(); ++i)
 			{
-				char glyph[2] = {letters[i], '\0'};
-				widths[i] = brandFont->CalcTextSizeA(brandSize, FLT_MAX, 0.0f, glyph).x;
+				const unsigned char byte = static_cast<unsigned char>(headerText[i]);
+				if ((byte & 0xC0) == 0x80)
+					continue;
+				const char* begin = headerText.data() + i;
+				const char* end = begin + 1;
+				while (end < headerText.data() + headerText.size() && (static_cast<unsigned char>(*end) & 0xC0) == 0x80)
+					++end;
+				widths[i] = brandFont->CalcTextSizeA(brandSize, FLT_MAX, 0.0f, begin, end).x;
 				totalWidth += widths[i];
+				if (end < headerText.data() + headerText.size())
+					totalWidth += letterGap;
 			}
-			float cursorX = kMenuX + (kMenuWidth - totalWidth) * 0.5f;
-			const float activeLetter = std::fmod(time * 2.15f, static_cast<float>(letterCount));
-			for (int i = 0; i < letterCount; ++i)
+
+			std::vector<std::pair<std::size_t, std::size_t>> glyphRanges;
+			for (std::size_t i = 0; i < headerText.size();)
 			{
-				float distance = std::fabs(activeLetter - static_cast<float>(i));
-				distance = std::min(distance, static_cast<float>(letterCount) - distance);
-				const float envelope = std::exp(-distance * distance * 3.6f);
-				const float microX = std::sin(time * 24.0f + i * 2.21f) * 0.72f * envelope;
-				const float microY = std::sin(time * 31.0f + i * 1.73f) * 1.05f * envelope;
-				const float colorWave = 0.5f + 0.5f * std::sin(time * 1.9f + i * 0.71f);
-				const ImVec4 letterColor(
-				    (205.0f + 36.0f * colorWave) / 255.0f,
-				    (216.0f + 31.0f * colorWave) / 255.0f,
-				    (172.0f + 55.0f * colorWave) / 255.0f,
-				    1.0f);
-				char glyph[2] = {letters[i], '\0'};
+				std::size_t end = i + 1;
+				while (end < headerText.size() && (static_cast<unsigned char>(headerText[end]) & 0xC0) == 0x80)
+					++end;
+				glyphRanges.emplace_back(i, end);
+				i = end;
+			}
+
+			float cursorX = kMenuX + (kMenuWidth - totalWidth) * 0.5f;
+			constexpr float perLetterSeconds = 0.46f;
+			constexpr float waitSeconds = 4.0f;
+			const float sequenceDuration = static_cast<float>(glyphRanges.size()) * perLetterSeconds;
+			const float fullCycle = sequenceDuration + waitSeconds;
+			const float cycleTime = fullCycle > 0.0f ? std::fmod(time, fullCycle) : 0.0f;
+			const int activeGlyph = cycleTime < sequenceDuration ? static_cast<int>(cycleTime / perLetterSeconds) : -1;
+
+			for (std::size_t glyphIndex = 0; glyphIndex < glyphRanges.size(); ++glyphIndex)
+			{
+				const auto [beginIndex, endIndex] = glyphRanges[glyphIndex];
+				const float glyphWidth = widths[beginIndex];
+				float envelope = 0.0f;
+				if (activeGlyph == static_cast<int>(glyphIndex))
+				{
+					const float local = std::clamp((cycleTime - static_cast<float>(glyphIndex) * perLetterSeconds) / perLetterSeconds, 0.0f, 1.0f);
+					envelope = std::sin(local * 3.14159265f);
+				}
+				const float microX = std::sin(time * 24.0f + static_cast<float>(glyphIndex) * 2.21f) * 0.72f * envelope;
+				const float microY = std::sin(time * 31.0f + static_cast<float>(glyphIndex) * 1.73f) * 1.05f * envelope;
+				const float colorWave = 0.5f + 0.5f * std::sin(time * 1.9f + static_cast<float>(glyphIndex) * 0.71f);
+				const ImVec4 letterColor((205.0f + 36.0f * colorWave) / 255.0f, (216.0f + 31.0f * colorWave) / 255.0f, (172.0f + 55.0f * colorWave) / 255.0f, 1.0f);
+				const char* glyphBegin = headerText.data() + beginIndex;
+				const char* glyphEnd = headerText.data() + endIndex;
 				const ImVec2 glyphPos(cursorX + microX, y + kHeaderHeight * 0.34f + microY);
-				drawList->AddText(brandFont, brandSize, ImVec2(glyphPos.x + 1.0f, glyphPos.y + 1.0f), C(IM_COL32(3, 6, 2, 150)), glyph);
-				drawList->AddText(brandFont, brandSize, glyphPos, C(ImGui::ColorConvertFloat4ToU32(letterColor)), glyph);
-				// Pequena segunda passagem somente na letra ativa da onda cria peso sem borrar.
+				drawList->AddText(brandFont, brandSize, ImVec2(glyphPos.x + 1.0f, glyphPos.y + 1.0f), C(IM_COL32(3, 6, 2, 150)), glyphBegin, glyphEnd);
+				drawList->AddText(brandFont, brandSize, glyphPos, C(ImGui::ColorConvertFloat4ToU32(letterColor)), glyphBegin, glyphEnd);
 				if (envelope > 0.35f)
-					drawList->AddText(brandFont, brandSize, ImVec2(glyphPos.x + 0.38f, glyphPos.y), C(ImGui::ColorConvertFloat4ToU32(letterColor)), glyph);
-				cursorX += widths[i] + letterGap;
+					drawList->AddText(brandFont, brandSize, ImVec2(glyphPos.x + 0.38f, glyphPos.y), C(ImGui::ColorConvertFloat4ToU32(letterColor)), glyphBegin, glyphEnd);
+				cursorX += glyphWidth + letterGap;
 			}
 			y += kHeaderHeight;
 
-			std::string title = "MENU PRINCIPAL";
-			if (m_Level == Level::ConfirmShutdown)
-				title = "CONFIRMACAO";
-			else if (m_Level != Level::Root && m_ActiveSubmenu)
-				title = m_Level == Level::Categories ? m_ActiveSubmenu->m_Name : m_ActiveSubmenu->GetActiveCategory()->m_Name;
+			// Keep the slim separator/counter bar, but do not repeat submenu/category
+			// names here: those names now live exclusively in the animated header.
 			drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kSubmenuHeight), C(IM_COL32(12, 12, 12, 235)));
-			DrawText(drawList, ImVec2(kMenuX + 10.0f * layout.Scale, y + 6.0f * layout.Scale), white, title, layout.Scale);
+			if (m_Level == Level::Root)
+				DrawText(drawList, ImVec2(kMenuX + 10.0f * layout.Scale, y + 6.0f * layout.Scale), white, Localization::Text("MENU PRINCIPAL"), layout.Scale);
 			const std::size_t count = currentCount;
 			const std::string counter = count ? std::format("{} / {}", m_Selected + 1, count) : "0 / 0";
 			DrawText(drawList,
-			    ImVec2(kMenuX + kMenuWidth - ImGui::CalcTextSize(counter.c_str()).x * layout.Scale - 10.0f * layout.Scale,
-			        y + 6.0f * layout.Scale),
-			    C(IM_COL32(180, 180, 180, 255)),
-			    counter,
-			    layout.Scale);
+			    ImVec2(kMenuX + kMenuWidth - ImGui::CalcTextSize(counter.c_str()).x * layout.Scale - 10.0f * layout.Scale, y + 6.0f * layout.Scale),
+			    C(IM_COL32(180, 180, 180, 255)), counter, layout.Scale);
 			y += kSubmenuHeight;
 
 			std::vector<std::pair<std::string, std::string>> entries;
@@ -280,27 +380,27 @@ namespace YimMenu
 			std::string description;
 			if (m_Level == Level::ConfirmShutdown)
 			{
-				entries.emplace_back("Sim", "");
-				entries.emplace_back("Nao", "");
-				description = "Deseja realmente encerrar? Enter confirma; Backspace cancela.";
+				entries.emplace_back(Localization::Text("Sim"), "");
+				entries.emplace_back(Localization::Text("Não"), "");
+				description = Localization::Text("Deseja realmente encerrar o Tenebris?");
 			}
 			else if (m_Level == Level::Root)
 			{
 				for (const auto& submenu : m_Submenus)
-					entries.emplace_back(submenu->m_Name, ">");
-				entries.emplace_back("Encerrar Tenebris", "");
+					entries.emplace_back(Localization::Text(submenu->m_Name), ">");
+				entries.emplace_back(Localization::Text("Encerrar Tenebris"), "");
 			}
 			else if (m_Level == Level::Categories)
 			{
 				for (const auto& category : m_ActiveSubmenu->m_Categories)
-					entries.emplace_back(category->m_Name, ">");
+					entries.emplace_back(Localization::Text(category->m_Name), ">");
 			}
 			else
 			{
 				for (UIItem* item : currentItems)
-					entries.emplace_back(item->GetMenuLabel(), item->GetMenuValue());
+					entries.emplace_back(Localization::Text(item->GetMenuLabel()), Localization::Text(item->GetMenuValue()));
 				if (m_Selected < currentItems.size())
-					description = GetPortugueseDescription(currentItems[m_Selected]->GetMenuDescription(), currentItems[m_Selected]->GetMenuLabel());
+					description = UsefulDescription(currentItems[m_Selected]->GetMenuDescription(), currentItems[m_Selected]->GetMenuLabel());
 			}
 
 			const std::size_t first = m_Selected >= kOptionsPerPage ? m_Selected - kOptionsPerPage + 1 : 0;
@@ -315,30 +415,19 @@ namespace YimMenu
 				const float rightWidth = ImGui::CalcTextSize(entries[index].second.c_str()).x * layout.Scale;
 				const float labelClipRight = std::max(kMenuX + 8.0f, kMenuX + kMenuWidth - rightWidth - 20.0f);
 				drawList->PushClipRect(ImVec2(kMenuX + 8.0f, y), ImVec2(labelClipRight, y + kOptionHeight), true);
-				DrawText(drawList,
-				    ImVec2(kMenuX + 10.0f * layout.Scale, y + 5.0f * layout.Scale),
-				    selected ? C(IM_COL32(10, 10, 10, 255)) : white,
-				    entries[index].first,
-				    layout.Scale);
+				DrawText(drawList, ImVec2(kMenuX + 10.0f * layout.Scale, y + 5.0f * layout.Scale), selected ? C(IM_COL32(10, 10, 10, 255)) : white, entries[index].first, layout.Scale);
 				drawList->PopClipRect();
-				DrawText(drawList,
-				    ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f),
-				    selected ? C(IM_COL32(10, 10, 10, 255)) : white,
-				    entries[index].second,
-				    layout.Scale);
+				DrawText(drawList, ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f), selected ? C(IM_COL32(10, 10, 10, 255)) : white, entries[index].second, layout.Scale);
 				y += kOptionHeight;
 			}
 
 			drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kFooterHeight), C(IM_COL32(12, 12, 12, 245)));
 			drawList->AddLine(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y), C(kLightGreen), 1.0f);
-			const std::string runtime = std::format("Jogo {}  |  Tenebris v{}", m_GameBuild, m_ModVersion);
+			const std::string runtime = Localization::IsPortuguese() ? std::format("Jogo {}  |  Tenebris v{}", m_GameBuild, m_ModVersion) : std::format("Game {}  |  Tenebris v{}", m_GameBuild, m_ModVersion);
 			DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 4.0f * layout.Scale), C(IM_COL32(190, 200, 175, 255)), runtime, layout.Scale * 0.82f);
-			DrawText(drawList,
-			    ImVec2(kMenuX + 10.0f, y + 21.0f * layout.Scale),
-			    C(IM_COL32(155, 165, 145, 255)),
-			    "Setas: navegar  |  Enter: selecionar  |  Voltar: Backspace",
-			    layout.Scale * 0.72f);
+			DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 21.0f * layout.Scale), C(IM_COL32(155, 165, 145, 255)), Localization::Text("Setas: navegar  |  Enter: selecionar  |  Backspace: Voltar"), layout.Scale * 0.72f);
 			y += kFooterHeight;
+
 			if (!description.empty())
 			{
 				const float descriptionFontSize = ImGui::GetFontSize() * layout.Scale * 0.86f;
@@ -346,14 +435,10 @@ namespace YimMenu
 				const float panelHeight = std::max(kDescriptionHeight, textHeight + 16.0f * layout.Scale);
 				drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + panelHeight), C(IM_COL32(5, 5, 5, 225)));
 				drawList->AddLine(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y), C(IM_COL32(52, 77, 14, 190)), 1.0f);
-				DrawWrappedText(drawList,
-				    ImVec2(kMenuX + 10.0f, y + 8.0f),
-				    C(IM_COL32(220, 214, 201, 255)),
-				    description,
-				    kMenuWidth - 20.0f,
-				    layout.Scale * 0.86f);
+				DrawWrappedText(drawList, ImVec2(kMenuX + 10.0f, y + 8.0f), C(IM_COL32(220, 214, 201, 255)), description, kMenuWidth - 20.0f, layout.Scale * 0.86f);
 				y += panelHeight;
 			}
+
 			drawList->AddRect(ImVec2(kMenuX - 2.0f, kMenuY - 2.0f), ImVec2(kMenuX + kMenuWidth + 2.0f, y + 2.0f), C(IM_COL32(12, 16, 7, 230)), 6.0f, 0, 4.0f);
 			drawList->AddRect(ImVec2(kMenuX, kMenuY), ImVec2(kMenuX + kMenuWidth, y), C(kLightGreen), 4.0f, 0, 1.0f);
 		}
@@ -366,6 +451,7 @@ namespace YimMenu
 	{
 		return m_ActiveSubmenu;
 	}
+
 	std::shared_ptr<Category> UIManager::GetActiveCategoryImpl()
 	{
 		return m_ActiveSubmenu ? m_ActiveSubmenu->GetActiveCategory() : nullptr;
