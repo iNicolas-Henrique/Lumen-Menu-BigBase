@@ -1,5 +1,6 @@
 #include "World.hpp"
 
+#include "World/NetworkBeats.hpp"
 #include "World/PedSpawner.hpp"
 #include "World/Shows.hpp"
 #include "World/Train.hpp"
@@ -51,6 +52,7 @@ namespace YimMenu::Submenus
 		auto main    = std::make_shared<Category>("Principal");
 		auto weather = std::make_shared<Category>("Clima");
 		auto shows   = std::make_shared<Category>("Espetaculos");
+		auto events  = std::make_shared<Category>("Eventos aleatorios");
 		auto time    = std::make_shared<Category>("Horario");
 
 
@@ -182,10 +184,15 @@ namespace YimMenu::Submenus
 			RenderShowsMenu();
 		}, "Teatro e espetaculos", "Seleciona e controla apresentacoes e espetaculos do mundo."));
 
+		events->AddItem(std::make_shared<ImGuiItem>([] {
+			RenderNetworkBeatsMenu();
+		}, "Network Beats", "Seleciona ou sorteia encontros aleatorios do RDO usando o net_beat_manager. Limitado a sessao solo e ao Script Host.", 520.0f));
+
 
 		AddCategory(std::move(main));
 		AddCategory(std::move(weather));
 		AddCategory(std::move(spawners));
+		AddCategory(std::move(events));
 		AddCategory(std::move(shows));
 		AddCategory(std::move(time));
 	}
