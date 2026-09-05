@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <format>
 #include <initializer_list>
 #include <string_view>
 
@@ -44,9 +45,6 @@ namespace YimMenu
 
 		std::string FixPortuguese(std::string text)
 		{
-			// Corrige palavras que apareceram repetidamente sem acentuação nas strings
-			// antigas. Mantemos as substituições delimitadas o bastante para não mexer
-			// em nomes de hashes/comandos.
 			for (const auto& [from, to] : std::array<std::pair<std::string_view, std::string_view>, 36>{
 			         {{"Configuracoes", "Configurações"}, {"configuracoes", "configurações"}, {"Protecoes", "Proteções"},
 			             {"protecoes", "proteções"}, {"protecao", "proteção"}, {"Protecao", "Proteção"},
@@ -75,8 +73,6 @@ namespace YimMenu
 		std::string BuildPortugueseDescription(std::string_view name, std::string_view label, std::string_view description)
 		{
 			const std::string key = ToLower(std::string(name) + " " + std::string(label) + " " + std::string(description));
-
-			// Proteções.
 			if (HasAny(key, {"blockkickfrommissionlobby", "block kick from mission lobby"})) return "Bloqueia tentativas indevidas de expulsar você de um lobby de missão.";
 			if (Has(key, "block") && Has(key, "spectator") && Has(key, "session")) return "Bloqueia espectadores indesejados na sessão.";
 			if (Has(key, "block") && Has(key, "spectat")) return "Bloqueia tentativas de outros jogadores observarem seu personagem.";
@@ -96,7 +92,6 @@ namespace YimMenu
 			if (Has(key, "block") && Has(key, "stable")) return "Bloqueia eventos remotos ligados ao estábulo.";
 			if (HasAny(key, {"relay connection", "relay connections", "userelaycxns"})) return "Usa conexões retransmitidas quando o jogo disponibiliza esse caminho de rede.";
 
-			// Personagem.
 			if (HasAny(key, {"restoreplayer", "restore player"})) return "Revive o personagem, recupera a vida e restaura o vigor.";
 			if (HasAny(key, {"cleanplayer", "keepclean", "keep clean"})) return "Remove sangue e sujeira do personagem; quando contínuo, mantém a aparência limpa.";
 			if (HasAny(key, {"refillcores", "keepcoresfilled", "keep cores"})) return "Preenche ou mantém cheios os núcleos de vida, vigor e Olho da Morte.";
@@ -119,7 +114,6 @@ namespace YimMenu
 			if (HasAny(key, {"eagleeye", "eagle eye"})) return "Mantém a habilidade Olho de Águia ativa conforme o estado da opção.";
 			if (HasAny(key, {"whistle", "assobio"})) return "Ajusta as características do assobio usado para chamar a montaria.";
 
-			// Armas.
 			if (HasAny(key, {"infiniteammo", "infinite ammo"})) return "Mantém a munição de reserva sem consumo.";
 			if (HasAny(key, {"infiniteclip", "infinite clip"})) return "Evita que os disparos consumam a munição carregada na arma.";
 			if (HasAny(key, {"nospread", "no spread"})) return "Reduz a dispersão dos disparos para deixar os tiros mais precisos.";
@@ -128,7 +122,6 @@ namespace YimMenu
 			if (HasAny(key, {"olddeadeye", "old deadeye"})) return "Ativa o conjunto alternativo de comportamento do Olho da Morte.";
 			if (HasAny(key, {"deadeyetagging", "dead eye tagging"})) return "Controla a marcação automática de alvos durante o Olho da Morte.";
 
-			// Cavalo e veículos.
 			if (Has(key, "horse") && HasAny(key, {"bar", "core", "agitation"})) return "Mantém automaticamente os atributos correspondentes do cavalo em boas condições.";
 			if (Has(key, "horse") && HasAny(key, {"clean", "limp"})) return "Mantém o cavalo limpo automaticamente.";
 			if (Has(key, "horse") && HasAny(key, {"superrun", "super run"})) return "Aumenta a velocidade de corrida do cavalo.";
@@ -141,7 +134,6 @@ namespace YimMenu
 			if (HasAny(key, {"superdrive", "super drive"})) return "Adiciona impulso extra ao dirigir o veículo atual.";
 			if (HasAny(key, {"superbrake", "super brake"})) return "Aumenta a força de frenagem do veículo atual.";
 
-			// Teleporte.
 			if (HasAny(key, {"autotp", "auto tp"})) return "Executa automaticamente o teleporte quando a função correspondente exigir.";
 			if (HasAny(key, {"waypoint", "map marker"}) && HasAny(key, {"tp", "teleport"})) return "Teleporta você para o ponto marcado no mapa.";
 			if (HasAny(key, {"moonshine", "shack"}) && HasAny(key, {"tp", "teleport"})) return "Teleporta você para a cabana de moonshine.";
@@ -151,7 +143,6 @@ namespace YimMenu
 			if (Has(key, "mount") && HasAny(key, {"tp", "teleport"})) return "Teleporta você para a montaria atual.";
 			if (HasAny(key, {"teleport", "tpto", "tpinto", "tpbehind", "bring"})) return "Executa o teleporte indicado pelo nome da opção para o destino selecionado.";
 
-			// Sessão e interface.
 			if (HasAny(key, {"newsession", "new session"})) return "Sai da sessão atual e solicita uma nova sessão do jogo.";
 			if (HasAny(key, {"blockalltelemetry", "block telemetry"})) return "Bloqueia a telemetria tratada por esta função.";
 			if (HasAny(key, {"locklobby", "lock lobby"})) return "Impede novas entradas no lobby enquanto o bloqueio estiver ativo.";
@@ -166,25 +157,17 @@ namespace YimMenu
 			if (HasAny(key, {"time", "clock", "hora"})) return "Ajusta o horário usado no mundo do jogo.";
 			if (HasAny(key, {"spawn", "spawner"})) return "Cria no mundo a entidade selecionada por esta opção.";
 
-			// Ações sobre outros jogadores: descrição curta, sem esconder o que a opção faz.
 			if (Has(key, "kick") && !Has(key, "block")) return "Tenta remover o jogador selecionado da sessão atual.";
-			if (HasAny(key, {"explodeall", "explode player", "kill player", "beatdown", "beat down", "poodle attack", "remote bolas", "spank", "cage player", "delete horse", "delete vehicle"}))
-				return "Executa a ação indicada pelo nome da opção no jogador selecionado.";
+			if (HasAny(key, {"explodeall", "explode player", "kill player", "beatdown", "beat down", "poodle attack", "remote bolas", "spank", "cage player", "delete horse", "delete vehicle"})) return "Executa a ação indicada pelo nome da opção no jogador selecionado.";
 			if (HasAny(key, {"spoof", "hidegod", "hide god", "hidespectate", "hide spectate"})) return "Altera o dado ou comportamento indicado pelo nome da opção durante a sessão.";
-
-			if (LooksPortuguese(description))
-				return FixPortuguese(std::string(description));
-
-			// Último recurso: usa o nome real da opção e descreve claramente a ação
-			// genérica, em vez do antigo texto vazio “configura o comportamento”.
+			if (LooksPortuguese(description)) return FixPortuguese(std::string(description));
 			return std::format("Ativa, desativa ou executa “{}” conforme o tipo da opção mostrado no menu.", FixPortuguese(std::string(label)));
 		}
 
 		std::string BuildEnglishDescription(std::string_view name, std::string_view label, std::string_view description)
 		{
 			const std::string key = ToLower(std::string(name) + " " + std::string(label));
-			if (!LooksPortuguese(description) && !description.empty())
-				return std::string(description);
+			if (!LooksPortuguese(description) && !description.empty()) return std::string(description);
 			if (HasAny(key, {"maximumhostility"})) return "Sets the law wanted level directly to 5 and calls law enforcement immediately.";
 			if (HasAny(key, {"clearlawstate"})) return "Clears the bounty and ends the current law pursuit.";
 			if (HasAny(key, {"restoreplayer"})) return "Revives the player and restores health and stamina.";
