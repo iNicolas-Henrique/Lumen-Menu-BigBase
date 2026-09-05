@@ -113,11 +113,10 @@ namespace YimMenu::Submenus
 	{
 		auto recovery               = std::make_shared<Category>("Recuperacao");
 		auto spawnCollectiblesGroup = std::make_shared<Group>("Spawn Collectibles");
-		auto spawnHerbsGroup		= std::make_shared<Group>("Spawn Herbs");
+		auto spawnHerbsGroup        = std::make_shared<Group>("Spawn Herbs");
 		auto recoveryOptions        = std::make_shared<Group>("Options");
 
 		static auto recoveryCommand = Commands::GetCommand<BoolCommand>("recoveryenabled"_J);
-
 		spawnCollectiblesGroup->AddItem(std::make_shared<ImGuiItem>([=] {
 			if (recoveryCommand->GetState())
 			{
@@ -173,18 +172,6 @@ namespace YimMenu::Submenus
 						Rewards::GiveRequestedRewards({selected});
 					});
 				}
-
-				// static char awardBuffer[255]{};
-				// ImGui::InputText("Award Hash", awardBuffer, sizeof(awardBuffer));
-				// ImGui::SameLine();
-				// if (ImGui::Button("Give Award"))
-				// {
-					//FiberPool::Push([] {
-						//if (!Scripts::RequestScript("interactive_campfire"_J))
-							//return;
-						//ScriptFunctions::GiveItemDatabaseAward.StaticCall(Joaat(awardBuffer), false, 255, 0, false);
-					//});
-				//}
 			}
 			else
 			{
@@ -233,18 +220,8 @@ namespace YimMenu::Submenus
 		recovery->AddItem(spawnHerbsGroup);
 		recovery->AddItem(recoveryOptions);
 
-		auto dailiesGroup = std::make_shared<Group>("Dailys");
-		dailiesGroup->AddItem(std::make_shared<ImGuiItem>([=] {
-			if (ImGui::Button("Dailys"))
-			{
-				FiberPool::Push([] {
-					for (auto& stat : Data::int_stats)
-					{
-						IncrementInt(stat.BaseId, stat.PermutationId, stat.desiredValue);
-					}
-				});
-			}
-		}, "Concluir desafios diarios", "Aplica o progresso configurado aos desafios diarios.", 240.0f));
+		auto dailiesGroup = std::make_shared<Group>("Desafios diários");
+		dailiesGroup->AddItem(std::make_shared<CommandItem>("completedailies"_J));
 		recovery->AddItem(dailiesGroup);
 
 		AddCategory(std::move(recovery));
