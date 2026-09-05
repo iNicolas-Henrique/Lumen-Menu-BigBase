@@ -120,7 +120,7 @@ namespace YimMenu::Submenus
         // combinacoes de tabela/clip do ImGui. Agora a area clicavel nao carrega o
         // texto; o nome e desenhado explicitamente dentro do retangulo da linha.
         const float rowHeight = ImGui::GetTextLineHeightWithSpacing() + 4.0f;
-        const bool clicked = ImGui::Selectable("##player_row", selected, ImGuiSelectableFlags_SpanAvailWidth, ImVec2(0.0f, rowHeight));
+        const bool clicked = ImGui::Selectable("##player_row", selected, ImGuiSelectableFlags_None, ImVec2(0.0f, rowHeight));
         const bool hovered = ImGui::IsItemHovered();
         const ImVec2 rowMin = ImGui::GetItemRectMin();
         ImGui::GetWindowDrawList()->AddText(
@@ -206,7 +206,7 @@ namespace YimMenu::Submenus
 
         ImGui::Spacing();
         ImGui::Separator();
-        const auto currentSelected = YimMenu::Players::GetSelected();
+        auto currentSelected = YimMenu::Players::GetSelected();
         if (currentSelected.IsValid())
             ImGui::Text("Selecionado: %s", currentSelected.GetName());
     }
