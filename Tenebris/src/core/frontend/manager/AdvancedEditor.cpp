@@ -2,6 +2,7 @@
 
 #include "ResponsiveLayout.hpp"
 #include "UIItem.hpp"
+#include "game/frontend/GUI.hpp"
 
 #include <Windows.h>
 
@@ -63,14 +64,18 @@ namespace YimMenu
 		const ImVec2 origin = viewport->WorkPos;
 		const float gap = std::clamp(display.x * 0.0125f, 8.0f, 14.0f);
 
-		// Editor lateral compacto. Em 1280x720 ele ocupa aproximadamente um terco
-		// da tela e deixa o personagem livre no centro/esquerda para pre-visualizacao.
+		// Editor lateral compacto. Com o menu classico aberto ele fica a direita;
+		// quando o menu principal some, muda automaticamente para a esquerda para
+		// liberar a area de visualizacao do personagem/mundo.
 		const float desiredWidth = std::clamp(display.x * 0.32f, 300.0f, 410.0f);
 		const float editorWidth = std::min(desiredWidth, display.x - gap * 2.0f);
 		const float availableHeight = std::max(180.0f, display.y - gap * 2.0f);
 		const float desiredHeight = g_Item->GetPreferredEditorHeight();
 		const float editorHeight = std::clamp(desiredHeight, 180.0f, availableHeight);
-		const ImVec2 editorPosition(origin.x + display.x - editorWidth - gap, origin.y + gap);
+		const bool mainMenuOpen = GUI::IsOpen();
+		const ImVec2 editorPosition(
+		    mainMenuOpen ? (origin.x + display.x - editorWidth - gap) : (origin.x + gap),
+		    origin.y + gap);
 		const ImVec2 editorSize(editorWidth, editorHeight);
 
 		ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
