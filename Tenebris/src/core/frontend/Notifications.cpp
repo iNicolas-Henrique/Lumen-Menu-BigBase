@@ -9,6 +9,24 @@
 
 namespace YimMenu
 {
+	namespace
+	{
+		NotificationPlacement ResolvePlacement(const std::string& title, NotificationPlacement requested)
+		{
+			if (requested != NotificationPlacement::Left)
+				return requested;
+
+			if (title == "Protections" || title == "Protection" || title == "Proteções" || title == "Proteção")
+				return NotificationPlacement::Right;
+
+			if (title == "Teleport" || title == "Teleporte" || title == "Waypoint" || title == "Camp" ||
+			    title == "Moonshine Shack" || title == "Madam Nazar" || title == "Guarma")
+				return NotificationPlacement::TopCenter;
+
+			return requested;
+		}
+	}
+
 	Notification Notifications::ShowImpl(std::string title,
 	    std::string message,
 	    NotificationType type,
@@ -20,6 +38,7 @@ namespace YimMenu
 		if (title.empty() || message.empty())
 			return {};
 
+		placement = ResolvePlacement(title, placement);
 		auto message_id = Joaat(title + message + std::to_string(static_cast<int>(placement)));
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto exists = std::find_if(m_Notifications.begin(), m_Notifications.end(), [&](auto& notification) {
