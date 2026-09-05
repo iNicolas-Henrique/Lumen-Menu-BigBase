@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <cctype>
 
 namespace YimMenu::Localization
 {
@@ -16,7 +17,8 @@ namespace YimMenu::Localization
 		};
 
 		// Central vocabulary used by the classic menu and the most common editors.
-		// Feature-specific texts can be added here without changing menu logic.
+		// Keep aliases for legacy strings that were created without accents so the
+		// language switch also covers old menu code without invasive rewrites.
 		constexpr std::array kTranslations = {
 		    Translation{"Personagem", "Player"},
 		    Translation{"Teleporte", "Teleport"},
@@ -24,31 +26,62 @@ namespace YimMenu::Localization
 		    Translation{"Jogadores", "Players"},
 		    Translation{"Mundo", "World"},
 		    Translation{"Recuperação", "Recovery"},
+		    Translation{"Recuperacao", "Recovery"},
 		    Translation{"Configurações", "Settings"},
+		    Translation{"Configuracoes", "Settings"},
 		    Translation{"Depuração", "Debug"},
+		    Translation{"Depuracao", "Debug"},
 		    Translation{"Principal", "Main"},
 		    Translation{"Utilidades", "Utilities"},
 		    Translation{"Armas", "Weapons"},
 		    Translation{"Cavalo", "Horse"},
 		    Translation{"Veículo", "Vehicle"},
+		    Translation{"Veiculo", "Vehicle"},
 		    Translation{"Animações", "Animations"},
+		    Translation{"Animacoes", "Animations"},
 		    Translation{"Clima", "Weather"},
 		    Translation{"Criadores", "Spawners"},
 		    Translation{"Espetáculos", "Shows"},
+		    Translation{"Espetaculos", "Shows"},
 		    Translation{"Horário", "Time"},
+		    Translation{"Horario", "Time"},
 		    Translation{"Atalhos", "Hotkeys"},
 		    Translation{"Proteções", "Protections"},
+		    Translation{"Protecoes", "Protections"},
 		    Translation{"Idioma", "Language"},
 		    Translation{"Português", "Portuguese"},
 		    Translation{"Inglês", "English"},
 		    Translation{"Ações", "Actions"},
+		    Translation{"Acoes", "Actions"},
 		    Translation{"Lei e recompensa", "Law and bounty"},
 		    Translation{"Aparência", "Appearance"},
+		    Translation{"Aparencia", "Appearance"},
 		    Translation{"Movimento", "Movement"},
 		    Translation{"Ferramentas", "Tools"},
 		    Translation{"Opções", "Options"},
+		    Translation{"Options", "Options"},
+		    Translation{"Sessão", "Session"},
+		    Translation{"Sessao", "Session"},
+		    Translation{"Mascaramento", "Spoofing"},
+		    Translation{"Banco de jogadores", "Player database"},
+		    Translation{"Registros e extras", "Logs and extras"},
+		    Translation{"Voz", "Voice"},
+		    Translation{"Informações", "Information"},
+		    Translation{"Informacoes", "Information"},
+		    Translation{"Ajuda", "Helpful"},
+		    Translation{"Expulsar", "Kick"},
+		    Translation{"Provocações", "Trolling"},
+		    Translation{"Provocacoes", "Trolling"},
+		    Translation{"Tóxico", "Toxic"},
+		    Translation{"Toxico", "Toxic"},
+		    Translation{"Diversos", "Misc"},
+		    Translation{"Geral", "General"},
 		    Translation{"Itens ilimitados", "Unlimited Items"},
 		    Translation{"Concluir desafios diários", "Complete daily challenges"},
+		    Translation{"Desafios diários", "Daily challenges"},
+		    Translation{"Gerar colecionáveis", "Spawn collectibles"},
+		    Translation{"Gerar colecionaveis", "Spawn collectibles"},
+		    Translation{"Gerar ervas", "Spawn herbs"},
 		    Translation{"Criar veículo", "Spawn Vehicle"},
 		    Translation{"Criar PED Animais", "Spawn Animal PED"},
 		    Translation{"Criar Ped Humanos", "Spawn Human PED"},
@@ -102,6 +135,27 @@ namespace YimMenu::Localization
 		    Translation{"Remover dos favoritos", "Remove from favorites"},
 		    Translation{"Limpar favoritos", "Clear favorites"},
 		};
+
+		bool EqualsAsciiInsensitive(std::string_view a, std::string_view b)
+		{
+			if (a.size() != b.size())
+				return false;
+			for (std::size_t i = 0; i < a.size(); ++i)
+			{
+				const auto ca = static_cast<unsigned char>(a[i]);
+				const auto cb = static_cast<unsigned char>(b[i]);
+				if (ca < 128 && cb < 128)
+				{
+					if (std::tolower(ca) != std::tolower(cb))
+						return false;
+				}
+				else if (ca != cb)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
 	}
 
 	void SetLanguage(Language language)
@@ -135,10 +189,10 @@ namespace YimMenu::Localization
 		{
 			if (IsPortuguese())
 			{
-				if (text == entry.en || text == entry.pt)
+				if (EqualsAsciiInsensitive(text, entry.en) || text == entry.pt)
 					return std::string(entry.pt);
 			}
-			else if (text == entry.pt || text == entry.en)
+			else if (text == entry.pt || EqualsAsciiInsensitive(text, entry.en))
 			{
 				return std::string(entry.en);
 			}
