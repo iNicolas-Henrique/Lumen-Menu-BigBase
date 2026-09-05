@@ -1,7 +1,7 @@
 #include "Notifications.hpp"
 
 #include "core/logger/LogHelper.hpp"
-#include "game/backend/FiberPool.hpp" // TODO: game import in core
+#include "game/backend/FiberPool.hpp"
 #include "util/Joaat.hpp"
 
 #include <algorithm>
@@ -9,7 +9,6 @@
 
 namespace YimMenu
 {
-
 	Notification Notifications::ShowImpl(std::string title,
 	    std::string message,
 	    NotificationType type,
@@ -23,7 +22,6 @@ namespace YimMenu
 
 		auto message_id = Joaat(title + message + std::to_string(static_cast<int>(placement)));
 		std::lock_guard<std::mutex> lock(m_mutex);
-
 		auto exists = std::find_if(m_Notifications.begin(), m_Notifications.end(), [&](auto& notification) {
 			return notification.second.m_Identifier == message_id;
 		});
@@ -31,7 +29,8 @@ namespace YimMenu
 		if (exists != m_Notifications.end())
 		{
 			exists->second.m_CreatedOn = std::chrono::system_clock::now();
-			return {};
+			exists->second.m_Erasing = false;
+			return exists->second;
 		}
 
 		Notification notification{};
@@ -42,7 +41,8 @@ namespace YimMenu
 		notification.m_CreatedOn = std::chrono::system_clock::now();
 		notification.m_Duration = duration;
 		notification.m_Identifier = message_id;
-		notification.m_AnimationOffset = placement == NotificationPlacement::TopCenter ? -26.0f : -m_CardSizeX;
+		notification.m_AnimationOffset = placement == NotificationPlacement::TopCenter ? -22.0f : -m_CardSizeX;
+		notification.m_Alpha = 0.0f;
 
 		if (context_function)
 		{
@@ -50,7 +50,7 @@ namespace YimMenu
 			notification.m_ContextFuncName = context_function_name.empty() ? "Context Function" : context_function_name;
 		}
 
-		auto result = m_Notifications.insert(std::make_pair(title + message + std::to_string(static_cast<int>(placement)), notification));
+		m_Notifications.insert(std::make_pair(title + message + std::to_string(static_cast<int>(placement)), notification));
 		return notification;
 	}
 
@@ -71,14 +71,14 @@ namespace YimMenu
 	static void DrawNotification(Notification& notification, int stackPosition)
 	{
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
-		if (!viewport)
+		if (!viewport || notification.m_Alpha <= 0.002f)
 			return;
 
 		const ImVec2 workPos = viewport->WorkPos;
 		const ImVec2 workSize = viewport->WorkSize;
 		const ImVec2 cardSize(m_CardSizeX, m_CardSizeY);
 		float xPos = workPos.x + 10.0f;
-		float yPos = workPos.y + 10.0f + stackPosition * m_CardSizeY;
+		float yPos = workPos.y + 10.0f + stackPosition * (m_CardSizeY + 6.0f);
 
 		switch (notification.m_Placement)
 		{
@@ -88,7 +88,6 @@ namespace YimMenu
 			break;
 		case NotificationPlacement::Right:
 			xPos = workPos.x + workSize.x - cardSize.x - 10.0f - notification.m_AnimationOffset;
-			yPos = workPos.y + 10.0f + stackPosition * m_CardSizeY;
 			break;
 		case NotificationPlacement::Left:
 		default:
@@ -98,6 +97,7 @@ namespace YimMenu
 
 		ImGui::SetNextWindowSize(cardSize, ImGuiCond_Always);
 		ImGui::SetNextWindowPos(ImVec2(xPos, yPos), ImGuiCond_Always);
+		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, std::clamp(notification.m_Alpha, 0.0f, 1.0f));
 
 		std::string windowTitle = std::format("##TenebrisNotification_{}", notification.m_Identifier);
 		ImGui::Begin(windowTitle.c_str(), nullptr,
@@ -105,9 +105,9 @@ namespace YimMenu
 		        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
 		        ImGuiWindowFlags_NoFocusOnAppearing);
 
-		auto timeElapsed =
-		    (float)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - notification.m_CreatedOn).count();
-		auto depletionProgress = std::clamp(1.0f - (timeElapsed / (float)notification.m_Duration), 0.0f, 1.0f);
+		const float timeElapsed = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
+		    std::chrono::system_clock::now() - notification.m_CreatedOn).count());
+		const float depletionProgress = std::clamp(1.0f - (timeElapsed / static_cast<float>(std::max(notification.m_Duration, 1))), 0.0f, 1.0f);
 		ImGui::ProgressBar(depletionProgress, ImVec2(-1, 3.5f), "");
 
 		if (notification.m_Type == NotificationType::Info)
@@ -131,6 +131,7 @@ namespace YimMenu
 				FiberPool::Push([notification] { notification.m_ContextFunc(); });
 		}
 		ImGui::End();
+		ImGui::PopStyleVar();
 	}
 
 	void Notifications::DrawImpl()
@@ -141,6 +142,10 @@ namespace YimMenu
 			int leftPosition = 0;
 			int centerPosition = 0;
 			int rightPosition = 0;
+			float delta = ImGui::GetIO().DeltaTime;
+			if (delta <= 0.0f)
+				delta = 1.0f / 60.0f;
+			delta = std::clamp(delta, 0.0f, 0.05f);
 
 			for (auto& [id, notification] : m_Notifications)
 			{
@@ -150,28 +155,28 @@ namespace YimMenu
 				else if (notification.m_Placement == NotificationPlacement::Right)
 					position = &rightPosition;
 
-				DrawNotification(notification, (*position)++);
+				const auto elapsed = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
+				    std::chrono::system_clock::now() - notification.m_CreatedOn).count());
+				if (elapsed >= notification.m_Duration)
+					notification.m_Erasing = true;
 
-				const float targetOffset = 0.0f;
+				const float entryDistance = notification.m_Placement == NotificationPlacement::TopCenter ? 22.0f : m_CardSizeX;
 				if (!notification.m_Erasing)
 				{
-					if (notification.m_AnimationOffset < targetOffset)
-					{
-						notification.m_AnimationOffset += notification.m_Placement == NotificationPlacement::TopCenter ? 5.0f : m_CardAnimationSpeed;
-						if (notification.m_AnimationOffset > targetOffset)
-							notification.m_AnimationOffset = targetOffset;
-					}
+					notification.m_Alpha = std::min(1.0f, notification.m_Alpha + delta / 0.20f);
+					const float speed = notification.m_Placement == NotificationPlacement::TopCenter ? 150.0f : 1200.0f;
+					notification.m_AnimationOffset = std::min(0.0f, notification.m_AnimationOffset + speed * delta);
 				}
 				else
 				{
-					notification.m_AnimationOffset -= notification.m_Placement == NotificationPlacement::TopCenter ? 5.0f : m_CardAnimationSpeed;
-					const float eraseLimit = notification.m_Placement == NotificationPlacement::TopCenter ? -30.0f : -m_CardSizeX;
-					if (notification.m_AnimationOffset <= eraseLimit)
+					notification.m_Alpha = std::max(0.0f, notification.m_Alpha - delta / 0.24f);
+					const float speed = notification.m_Placement == NotificationPlacement::TopCenter ? 100.0f : 900.0f;
+					notification.m_AnimationOffset = std::max(-entryDistance, notification.m_AnimationOffset - speed * delta);
+					if (notification.m_Alpha <= 0.001f)
 						keysToErase.push_back(id);
 				}
 
-				if ((float)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - notification.m_CreatedOn).count() >= notification.m_Duration)
-					keysToErase.push_back(id);
+				DrawNotification(notification, (*position)++);
 			}
 		}
 
