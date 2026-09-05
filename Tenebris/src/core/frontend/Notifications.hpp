@@ -2,8 +2,8 @@
 
 namespace YimMenu
 {
-	static inline float m_CardSizeX          = 350.f;
-	static inline float m_CardSizeY          = 100.f;
+	static inline float m_CardSizeX = 350.f;
+	static inline float m_CardSizeY = 100.f;
 	static inline float m_CardAnimationSpeed = 50.f;
 
 	enum class NotificationType
@@ -32,6 +32,7 @@ namespace YimMenu
 		std::function<void()> m_ContextFunc;
 		std::string m_ContextFuncName;
 		float m_AnimationOffset = -m_CardSizeX;
+		float m_Alpha = 0.0f;
 		bool m_Erasing = false;
 		std::uint32_t m_Identifier;
 	};
@@ -42,7 +43,6 @@ namespace YimMenu
 		std::unordered_map<std::string, Notification> m_Notifications = {};
 		std::mutex m_mutex;
 
-		// duration is in milliseconds
 		Notification ShowImpl(std::string title,
 		    std::string message,
 		    NotificationType type,
@@ -81,5 +81,4 @@ namespace YimMenu
 			return GetInstance().EraseImpl(notification);
 		}
 	};
-
 }
