@@ -3,6 +3,7 @@
 #include "World/NetworkBeats.hpp"
 #include "World/PedSpawner.hpp"
 #include "World/Shows.hpp"
+#include "World/SoloLobby.hpp"
 #include "World/Train.hpp"
 #include "World/VehicleSpawner.hpp"
 #include "World/Weather.hpp"
@@ -53,6 +54,7 @@ namespace YimMenu::Submenus
 		auto weather = std::make_shared<Category>("Clima");
 		auto shows   = std::make_shared<Category>("Espetaculos");
 		auto events  = std::make_shared<Category>("Eventos aleatorios");
+		auto session = std::make_shared<Category>("Sessao privada");
 		auto time    = std::make_shared<Category>("Horario");
 
 
@@ -188,11 +190,16 @@ namespace YimMenu::Submenus
 			RenderNetworkBeatsMenu();
 		}, "Network Beats", "Seleciona ou sorteia encontros aleatorios do RDO usando o net_beat_manager. Limitado a sessao solo e ao Script Host.", 520.0f));
 
+		session->AddItem(std::make_shared<ImGuiItem>([] {
+			RenderSoloLobbyMenu();
+		}, "Lobby solo / privado", "Gerencia o metodo startup.meta para iniciar o RDO em lobby isolado ou privado com amigos. Requer reiniciar o jogo apos mudar o arquivo.", 560.0f));
+
 
 		AddCategory(std::move(main));
 		AddCategory(std::move(weather));
 		AddCategory(std::move(spawners));
 		AddCategory(std::move(events));
+		AddCategory(std::move(session));
 		AddCategory(std::move(shows));
 		AddCategory(std::move(time));
 	}
