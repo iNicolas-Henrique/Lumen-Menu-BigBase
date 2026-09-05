@@ -70,9 +70,25 @@ namespace YimMenu
 		const auto key_to_check = use_insert_key ? VK_INSERT : VK_F5;
 
 		// Um unico WM_KEYDOWN novo por toque. O bit 30 fica ligado nas repeticoes
-		// automaticas do Windows, entao Q/E/BACK nao disparam varias vezes por frame.
+		// automaticas do Windows, evitando multiplas acoes pelo mesmo toque.
 		if (m_IsOpen && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
-			UIManager::HandleKey(wparam);
+		{
+			if (AdvancedEditor::IsOpen())
+			{
+				// Alguns teclados compactos reportam as setas horizontais como Home/End.
+				// O editor aceita ambos, alem de Q/E como alternativa.
+				int editorKey = static_cast<int>(wparam);
+				if (editorKey == VK_LEFT || editorKey == VK_HOME)
+					editorKey = 'Q';
+				else if (editorKey == VK_RIGHT || editorKey == VK_END)
+					editorKey = 'E';
+				AdvancedEditor::HandleKey(editorKey);
+			}
+			else
+			{
+				UIManager::HandleKey(wparam);
+			}
+		}
 
 		if (msg == WM_KEYUP && wparam == key_to_check)
 		{
