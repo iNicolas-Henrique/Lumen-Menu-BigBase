@@ -77,8 +77,6 @@ namespace YimMenu
 
 	void UIManager::HandleKeyImpl(WPARAM key)
 	{
-		// Quando um editor avancado esta aberto, ele tem foco exclusivo do teclado.
-		// Isso impede que as setas alterem o menu principal por tras do editor.
 		if (AdvancedEditor::IsOpen())
 		{
 			AdvancedEditor::HandleKey(static_cast<int>(key));
@@ -140,7 +138,7 @@ namespace YimMenu
 				if (m_Selected == m_Submenus.size())
 				{
 					m_Level = Level::ConfirmShutdown;
-					m_Selected = 1; // A opcao segura (Nao) e sempre o padrao.
+					m_Selected = 1;
 					return;
 				}
 				m_ActiveSubmenu = m_Submenus[m_Selected];
@@ -169,6 +167,16 @@ namespace YimMenu
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		if (!viewport || viewport->WorkSize.x < 320.0f || viewport->WorkSize.y < 240.0f)
 			return;
+
+		// Durante edicao de personagem a janela classica da esquerda some
+		// temporariamente. BACK/X devolve o menu exatamente ao ponto anterior.
+		// Assim o personagem e o valor editado ficam visiveis ao mesmo tempo.
+		if (AdvancedEditor::IsOpen())
+		{
+			AdvancedEditor::Draw();
+			return;
+		}
+
 		const auto currentItems = m_Level == Level::Options ? GetCurrentItems() : std::vector<UIItem*>{};
 		const std::size_t currentCount = m_Level == Level::Options ? currentItems.size() : GetEntryCount();
 		if (currentCount > 0 && m_Selected >= currentCount)
@@ -301,8 +309,6 @@ namespace YimMenu
 		}
 		drawList->AddRect(ImVec2(kMenuX - 2.0f, kMenuY - 2.0f), ImVec2(kMenuX + kMenuWidth + 2.0f, y + 2.0f), IM_COL32(12, 16, 7, 230), 6.0f, 0, 4.0f);
 		drawList->AddRect(ImVec2(kMenuX, kMenuY), ImVec2(kMenuX + kMenuWidth, y), kLightGreen, 4.0f, 0, 1.0f);
-
-		AdvancedEditor::Draw();
 	}
 
 	std::shared_ptr<Submenu> UIManager::GetActiveSubmenuImpl()
