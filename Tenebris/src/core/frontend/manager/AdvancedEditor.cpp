@@ -38,7 +38,13 @@ namespace YimMenu
 		if (!g_Item)
 			return false;
 
-		if (key == VK_BACK || key == VK_ESCAPE)
+		// Backspace pertence ao menu classico da esquerda. Enquanto um editor
+		// avancado estiver aberto ele e consumido aqui para nao fechar a janela da
+		// direita nem navegar o menu por acidente. O editor fecha por Esc ou pelo X.
+		if (key == VK_BACK)
+			return true;
+
+		if (key == VK_ESCAPE)
 		{
 			Close();
 			return true;
