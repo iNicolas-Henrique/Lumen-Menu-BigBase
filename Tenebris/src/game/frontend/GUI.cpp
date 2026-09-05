@@ -51,6 +51,8 @@ namespace YimMenu
 		const auto use_insert_key = Commands::GetCommand<BoolCommand>("togglemenukey"_J)->GetState();
 		const auto key_to_check = use_insert_key ? VK_INSERT : VK_F5;
 
+		// Ignore the OS key-repeat bit here. Besides keeping navigation predictable,
+		// this prevents frontend sounds from being retriggered every repeat frame.
 		if (m_IsOpen && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
 		{
 			if (AdvancedEditor::IsOpen())
@@ -89,7 +91,10 @@ namespace YimMenu
 			if (ScriptMgr::CanTick())
 			{
 				FiberPool::Push([wasOpen] {
-					AUDIO::PLAY_SOUND_FRONTEND(wasOpen ? "BACK" : "SELECT", "HUD_PLAYER_MENU", 1, 0);
+					// These are the RDR2 native-menu open/close cues. Normal option
+					// selection/back still use SELECT/BACK in UIManager, so all four
+					// interactions have a distinct audible identity.
+					AUDIO::PLAY_SOUND_FRONTEND(wasOpen ? "MENU_CLOSE" : "MENU_ENTER", "HUD_PLAYER_MENU", 1, 0);
 				});
 			}
 		}
