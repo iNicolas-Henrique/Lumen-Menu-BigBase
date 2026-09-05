@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <random>
-#include <vector>
 
 namespace YimMenu::Submenus
 {
@@ -80,6 +78,13 @@ namespace YimMenu::Submenus
 		constexpr auto kPlayerBeatData = ScriptGlobal(1268861);
 		constexpr auto kDynamicBeatData = ScriptGlobal(1257541);
 
+		enum class ControlAuthority : int
+		{
+			None,
+			ScriptHost,
+			SoloOverride,
+		};
+
 		enum class TriggerResult : int
 		{
 			Idle,
@@ -88,11 +93,10 @@ namespace YimMenu::Submenus
 			Attempting,
 			ManagerAccepted,
 			SubmittedNoConfirmation,
-			ChanceMiss,
+			Cancelled,
 			NotOnline,
 			NotSolo,
 			ManagerInactive,
-			NotManagerHost,
 			ManagerBusy,
 			ManagerNotReady,
 			GlobalsUnavailable,
@@ -102,8 +106,8 @@ namespace YimMenu::Submenus
 		};
 
 		std::atomic_bool s_TriggerBusy{false};
+		std::atomic_bool s_CancelRequested{false};
 		std::atomic<TriggerResult> s_LastResult{TriggerResult::Idle};
-		std::atomic_int s_LastRoll{0};
 		std::atomic_int s_LastType{0};
 		std::atomic_int s_LastVariation{-1};
 		std::atomic_int s_LastCandidate{-1};
@@ -126,16 +130,51 @@ namespace YimMenu::Submenus
 			    && NETWORK::NETWORK_IS_SCRIPT_ACTIVE("net_beat_manager", -1, true, 0);
 		}
 
-		bool IsBeatManagerHost()
+		int GetBeatManagerHostId()
 		{
-			if (!IsBeatManagerActive() || !kBeatManagerThread.CanAccess(true))
-				return false;
+			if (!IsBeatManagerActive())
+				return -1;
+
+			// A native por nome consulta o host do script alvo, em vez do script
+			// injetado do Tenebris. Esse e o caminho principal.
+			const int hostByScript = static_cast<int>(NETWORK::NETWORK_GET_HOST_OF_SCRIPT("net_beat_manager", -1, 0));
+			if (hostByScript >= 0 && hostByScript < 32)
+				return hostByScript;
+
+			// Fallback do layout atual: thread id usado pelo proprio manager.
+			if (!kBeatManagerThread.CanAccess(true))
+				return -1;
 
 			const int threadId = *kBeatManagerThread.As<int*>();
 			if (threadId <= 0)
-				return false;
+				return -1;
 
-			return PLAYER::PLAYER_ID() == NETWORK::_0xB4A25351D79B444C(threadId);
+			const int hostByThread = static_cast<int>(NETWORK::_0xB4A25351D79B444C(threadId));
+			return (hostByThread >= 0 && hostByThread < 32) ? hostByThread : -1;
+		}
+
+		ControlAuthority GetControlAuthority()
+		{
+			if (!NETWORK::NETWORK_IS_GAME_IN_PROGRESS() || !IsBeatManagerActive())
+				return ControlAuthority::None;
+
+			if (CountActivePlayers() == 1)
+				return ControlAuthority::SoloOverride;
+
+			return GetBeatManagerHostId() == PLAYER::PLAYER_ID()
+			    ? ControlAuthority::ScriptHost
+			    : ControlAuthority::None;
+		}
+
+		const char* AuthorityText(ControlAuthority authority)
+		{
+			switch (authority)
+			{
+				case ControlAuthority::ScriptHost: return "SCRIPT HOST DO net_beat_manager";
+				case ControlAuthority::SoloOverride: return "SOLO OVERRIDE (1 JOGADOR)";
+				case ControlAuthority::None: return "SEM AUTORIDADE";
+			}
+			return "DESCONHECIDA";
 		}
 
 		const BeatDefinition* FindBeat(int type)
@@ -197,28 +236,27 @@ namespace YimMenu::Submenus
 		{
 			switch (result)
 			{
-				case TriggerResult::Idle: return "Pronto.";
-				case TriggerResult::Queued: return "Tentativa colocada na fila.";
-				case TriggerResult::WaitingForManager: return "Aguardando a janela correta do net_beat_manager...";
-				case TriggerResult::Attempting: return "Entregando candidato ao net_beat_manager...";
-				case TriggerResult::ManagerAccepted: return "O manager fez uma transicao real para execucao do Beat. O script especifico ainda pode aplicar validacoes proprias.";
-				case TriggerResult::SubmittedNoConfirmation: return "Candidato enviado, mas nao houve confirmacao de execucao durante a janela observada.";
-				case TriggerResult::ChanceMiss: return "A rolagem configurada no Tenebris nao passou; nenhum global foi alterado.";
+				case TriggerResult::Idle: return "Pronto para controle manual.";
+				case TriggerResult::Queued: return "Pedido exato colocado na fila.";
+				case TriggerResult::WaitingForManager: return "Aguardando a janela de selecao do net_beat_manager...";
+				case TriggerResult::Attempting: return "Forcando o candidato exato escolhido enquanto o manager esta em selecao...";
+				case TriggerResult::ManagerAccepted: return "O net_beat_manager aceitou e entrou no ciclo do Beat escolhido.";
+				case TriggerResult::SubmittedNoConfirmation: return "O candidato exato foi mantido na janela de selecao, mas o manager nao confirmou a execucao.";
+				case TriggerResult::Cancelled: return "Pedido manual cancelado e valores que pertenciam ao Tenebris restaurados.";
 				case TriggerResult::NotOnline: return "Red Dead Online nao esta em progresso.";
-				case TriggerResult::NotSolo: return "Bloqueado: esta funcao so aceita sessao solo (1 jogador ativo).";
+				case TriggerResult::NotSolo: return "Bloqueado: o controle forcado do Tenebris exige exatamente 1 jogador ativo.";
 				case TriggerResult::ManagerInactive: return "net_beat_manager nao esta ativo nesta sessao.";
-				case TriggerResult::NotManagerHost: return "Bloqueado: voce nao e o Script Host do net_beat_manager.";
-				case TriggerResult::ManagerBusy: return "O net_beat_manager ja esta avaliando/executando outro Beat. Tente novamente quando ele voltar ao estado de selecao.";
-				case TriggerResult::ManagerNotReady: return "O manager nao abriu a janela de selecao durante a tentativa; nenhuma escrita foi feita.";
+				case TriggerResult::ManagerBusy: return "O net_beat_manager ja esta avaliando/em cooldown de outro Beat.";
+				case TriggerResult::ManagerNotReady: return "O manager nao abriu a janela de selecao durante a tentativa.";
 				case TriggerResult::GlobalsUnavailable: return "Globais do Beat Manager indisponiveis; nenhuma escrita foi feita.";
-				case TriggerResult::DynamicDataUnavailable: return "O datafile deste evento dinamico ainda nao forneceu uma contagem valida; nenhuma escrita foi feita.";
+				case TriggerResult::DynamicDataUnavailable: return "O datafile deste evento dinamico ainda nao forneceu uma contagem valida.";
 				case TriggerResult::LayoutMismatch: return "Layout de globals diferente do esperado; recurso desativado por seguranca.";
-				case TriggerResult::Busy: return "Ja existe uma tentativa Tenebris em andamento.";
+				case TriggerResult::Busy: return "Ja existe um pedido manual Tenebris em andamento.";
 			}
 			return "Estado desconhecido.";
 		}
 
-		void QueueBeatAttempt(int selectedType, bool automaticVariation, int selectedVariation, int chance, bool respectChance)
+		void QueueExactBeat(int selectedType, int selectedVariation)
 		{
 			if (s_TriggerBusy.exchange(true))
 			{
@@ -226,10 +264,12 @@ namespace YimMenu::Submenus
 				return;
 			}
 
+			s_CancelRequested = false;
 			s_LastResult = TriggerResult::Queued;
-			FiberPool::Push([selectedType, automaticVariation, selectedVariation, chance, respectChance] {
+			FiberPool::Push([selectedType, selectedVariation] {
 				auto finish = [](TriggerResult result) {
 					s_LastResult = result;
+					s_CancelRequested = false;
 					s_TriggerBusy = false;
 				};
 
@@ -248,9 +288,23 @@ namespace YimMenu::Submenus
 					finish(TriggerResult::ManagerInactive);
 					return;
 				}
-				if (!IsBeatManagerHost())
+
+				const auto* beat = FindBeat(selectedType);
+				if (!beat)
 				{
-					finish(TriggerResult::NotManagerHost);
+					finish(TriggerResult::LayoutMismatch);
+					return;
+				}
+
+				const int variationCount = RuntimeVariationCount(*beat);
+				if (variationCount <= 0)
+				{
+					finish(beat->FixedVariationCount == 0 ? TriggerResult::DynamicDataUnavailable : TriggerResult::LayoutMismatch);
+					return;
+				}
+				if (selectedVariation < 0 || selectedVariation >= variationCount)
+				{
+					finish(TriggerResult::LayoutMismatch);
 					return;
 				}
 
@@ -289,79 +343,36 @@ namespace YimMenu::Submenus
 				}
 				s_LastManagerState = initialManagerState;
 
-				// Estados 2 e 3 significam que o manager ja esta avaliando ou aguardando
-				// o ciclo de um Beat. Nao chamamos isso de sucesso e nao escrevemos nada.
 				if (initialManagerState == 2 || initialManagerState == 3)
 				{
 					finish(TriggerResult::ManagerBusy);
 					return;
 				}
 
-				std::random_device rd;
-				std::mt19937 rng(rd());
-				std::uniform_int_distribution<int> rollDistribution(1, 100);
-				const int roll = rollDistribution(rng);
-				s_LastRoll = roll;
-				if (respectChance && roll > std::clamp(chance, 1, 100))
-				{
-					finish(TriggerResult::ChanceMiss);
-					return;
-				}
-
-				std::vector<std::pair<int, int>> attempts; // type, variation
-				if (selectedType == 0)
-				{
-					for (const auto& beat : kVerifiedBeats)
-					{
-						const int variationCount = RuntimeVariationCount(beat);
-						if (variationCount <= 0)
-							continue;
-						std::uniform_int_distribution<int> variationDistribution(0, variationCount - 1);
-						attempts.emplace_back(beat.Type, variationDistribution(rng));
-					}
-					std::shuffle(attempts.begin(), attempts.end(), rng);
-				}
-				else
-				{
-					const auto* beat = FindBeat(selectedType);
-					if (!beat)
-					{
-						finish(TriggerResult::LayoutMismatch);
-						return;
-					}
-
-					const int variationCount = RuntimeVariationCount(*beat);
-					if (variationCount <= 0)
-					{
-						finish(beat->FixedVariationCount == 0 ? TriggerResult::DynamicDataUnavailable : TriggerResult::LayoutMismatch);
-						return;
-					}
-
-					if (automaticVariation)
-					{
-						for (int variation = 0; variation < variationCount; ++variation)
-							attempts.emplace_back(beat->Type, variation);
-						std::shuffle(attempts.begin(), attempts.end(), rng);
-					}
-					else
-					{
-						attempts.emplace_back(beat->Type, std::clamp(selectedVariation, 0, variationCount - 1));
-					}
-				}
-
-				if (attempts.empty())
+				const int base = CandidateBaseForType(selectedType);
+				if (base < 0)
 				{
 					finish(TriggerResult::DynamicDataUnavailable);
 					return;
 				}
 
-				// A injecao so ocorre no estado 1, imediatamente antes do manager copiar
-				// os candidatos dos jogadores para a lista de arbitragem. Se ele nao abrir
-				// essa janela, abortamos sem escrever.
+				const int forcedCandidate = base + selectedVariation;
+				if (forcedCandidate < 0 || forcedCandidate >= runtimeCandidateCount)
+				{
+					finish(TriggerResult::LayoutMismatch);
+					return;
+				}
+
+				// Espera somente a janela correta. Enquanto isso nao tocamos em globals.
 				s_LastResult = TriggerResult::WaitingForManager;
 				bool selectionWindow = (*state == 1);
 				for (int frame = 0; !selectionWindow && frame < 180; ++frame)
 				{
+					if (s_CancelRequested.load())
+					{
+						finish(TriggerResult::Cancelled);
+						return;
+					}
 					ScriptMgr::Yield();
 					s_LastManagerState = *state;
 					if (CountActivePlayers() != 1)
@@ -372,11 +383,6 @@ namespace YimMenu::Submenus
 					if (!IsBeatManagerActive())
 					{
 						finish(TriggerResult::ManagerInactive);
-						return;
-					}
-					if (!IsBeatManagerHost())
-					{
-						finish(TriggerResult::NotManagerHost);
 						return;
 					}
 					if (*state == 2 || *state == 3)
@@ -394,20 +400,34 @@ namespace YimMenu::Submenus
 
 				const int originalCandidate = *candidate;
 				const float originalScore = *score;
-				int lastForcedCandidate = -1;
-				bool managerAccepted = false;
-				bool submittedAtLeastOnce = false;
+				s_LastType = selectedType;
+				s_LastVariation = selectedVariation;
+				s_LastCandidate = forcedCandidate;
 				s_LastResult = TriggerResult::Attempting;
 
 				auto restoreOwnedValues = [&] {
-					if (lastForcedCandidate >= 0 && *candidate == lastForcedCandidate)
+					if (*candidate == forcedCandidate)
 						*candidate = originalCandidate;
 					if (*score == kHostChanceGateBypassScore)
 						*score = originalScore;
 				};
 
-				for (const auto& [type, variation] : attempts)
+				bool managerAccepted = false;
+				bool sawEvaluationState = false;
+				bool submittedAtLeastOnce = false;
+
+				// Modo deterministico: nao ha sorteio de tipo, variacao nem chance Tenebris.
+				// Enquanto o manager continua em estado 1, reassertamos SOMENTE o candidato
+				// escolhido pelo usuario. Isso impede o scanner local de trocar o pedido
+				// antes da copia do manager, sem alterar offsets desconhecidos/nao verificados.
+				for (int frame = 0; frame < 240; ++frame)
 				{
+					if (s_CancelRequested.load())
+					{
+						restoreOwnedValues();
+						finish(TriggerResult::Cancelled);
+						return;
+					}
 					if (CountActivePlayers() != 1)
 					{
 						restoreOwnedValues();
@@ -420,125 +440,78 @@ namespace YimMenu::Submenus
 						finish(TriggerResult::ManagerInactive);
 						return;
 					}
-					if (!IsBeatManagerHost())
-					{
-						restoreOwnedValues();
-						finish(TriggerResult::NotManagerHost);
-						return;
-					}
 
-					// Depois de uma variacao rejeitada, o manager volta ao estado 1.
-					// Nao escrevemos enquanto ele estiver em outro estado.
-					bool readyForAttempt = (*state == 1);
-					for (int frame = 0; !readyForAttempt && frame < 90; ++frame)
+					s_LastManagerState = *state;
+					if (*state == 3)
 					{
+						managerAccepted = submittedAtLeastOnce;
+						break;
+					}
+					if (*state == 2)
+					{
+						sawEvaluationState = true;
 						ScriptMgr::Yield();
-						s_LastManagerState = *state;
-						if (*state == 3)
-						{
-							managerAccepted = submittedAtLeastOnce;
-							break;
-						}
-						readyForAttempt = (*state == 1);
+						continue;
 					}
-					if (managerAccepted)
+					if (sawEvaluationState && *state == 1)
+					{
+						// O manager avaliou o candidato e retornou a selecao: regras internas
+						// do evento recusaram o spawn. Nao trocamos para outra variacao.
 						break;
-					if (!readyForAttempt)
+					}
+					if (*state != 1)
 						break;
-
-					const auto* beat = FindBeat(type);
-					if (!beat)
-						continue;
-
-					const int variationCount = RuntimeVariationCount(*beat);
-					const int base = CandidateBaseForType(type);
-					if (base < 0 || variationCount <= 0 || variation < 0 || variation >= variationCount)
-						continue;
-
-					const int forcedCandidate = base + variation;
-					if (forcedCandidate < 0 || forcedCandidate >= runtimeCandidateCount)
-						continue;
-
-					lastForcedCandidate = forcedCandidate;
-					s_LastType = type;
-					s_LastVariation = variation;
-					s_LastCandidate = forcedCandidate;
-					submittedAtLeastOnce = true;
 
 					*candidate = forcedCandidate;
 					*score = kHostChanceGateBypassScore;
-
-					bool sawEvaluationState = false;
-					for (int frame = 0; frame < 120; ++frame)
-					{
-						ScriptMgr::Yield();
-						s_LastManagerState = *state;
-
-						if (*state == 3)
-						{
-							managerAccepted = true;
-							break;
-						}
-						if (*state == 2)
-						{
-							sawEvaluationState = true;
-							continue;
-						}
-						if (sawEvaluationState && *state == 1)
-						{
-							// O manager avaliou e voltou para selecao: esta variacao foi rejeitada.
-							break;
-						}
-						if (!sawEvaluationState && *state == 1 && *candidate != forcedCandidate)
-						{
-							// O scanner do proprio jogo substituiu o candidato antes da copia.
-							// Nao brigamos com a escrita dele; tentamos outra variacao.
-							break;
-						}
-						if (*score == kHostChanceGateBypassScore)
-							*score = kHostChanceGateBypassScore;
-					}
-
-					if (managerAccepted)
-						break;
+					submittedAtLeastOnce = true;
+					ScriptMgr::Yield();
 				}
 
 				restoreOwnedValues();
 				finish(managerAccepted ? TriggerResult::ManagerAccepted : TriggerResult::SubmittedNoConfirmation);
 			});
 		}
+
+		void CancelPendingBeat()
+		{
+			if (s_TriggerBusy.load())
+				s_CancelRequested = true;
+		}
 	}
 
 	void RenderNetworkBeatsMenu()
 	{
-		static int selectedEntry = 0; // 0 = aleatorio, 1..N = Beat verificado
+		static int selectedEntry = 0; // indice direto em kVerifiedBeats; sem opcao aleatoria
 		static int selectedVariation = 0;
-		static bool automaticVariation = true;
-		static int chance = 100;
 
 		const int activePlayers = NETWORK::NETWORK_IS_GAME_IN_PROGRESS() ? CountActivePlayers() : 0;
 		const bool managerActive = IsBeatManagerActive();
-		const bool managerHost = managerActive && IsBeatManagerHost();
+		const int managerHostId = managerActive ? GetBeatManagerHostId() : -1;
+		const bool actualManagerHost = managerHostId >= 0 && managerHostId == PLAYER::PLAYER_ID();
 		const bool solo = activePlayers == 1;
+		const ControlAuthority authority = GetControlAuthority();
 
 		ImGui::Text("Sessao solo: %s", solo ? "SIM" : "NAO");
 		ImGui::Text("Jogadores ativos: %d", activePlayers);
 		ImGui::Text("net_beat_manager: %s", managerActive ? "ATIVO" : "INATIVO");
-		ImGui::Text("Script Host do manager: %s", managerHost ? "SIM" : "NAO");
+		if (managerHostId >= 0)
+			ImGui::Text("Host real do manager: jogador %d%s", managerHostId, actualManagerHost ? " (VOCE)" : "");
+		else
+			ImGui::TextUnformatted("Host real do manager: NAO RESOLVIDO");
+		ImGui::Text("Autoridade Tenebris: %s", AuthorityText(authority));
 		ImGui::Separator();
 
-		const char* preview = selectedEntry == 0 ? "Aleatorio (tipos verificados)" : kVerifiedBeats[selectedEntry - 1].Name;
-		if (ImGui::BeginCombo("Evento", preview))
+		selectedEntry = std::clamp(selectedEntry, 0, static_cast<int>(kVerifiedBeats.size()) - 1);
+		const char* preview = kVerifiedBeats[selectedEntry].Name;
+		if (ImGui::BeginCombo("Evento exato", preview))
 		{
-			if (ImGui::Selectable("Aleatorio (tipos verificados)", selectedEntry == 0))
-				selectedEntry = 0;
-
 			for (int i = 0; i < static_cast<int>(kVerifiedBeats.size()); ++i)
 			{
-				const bool selected = selectedEntry == (i + 1);
+				const bool selected = selectedEntry == i;
 				if (ImGui::Selectable(kVerifiedBeats[i].Name, selected))
 				{
-					selectedEntry = i + 1;
+					selectedEntry = i;
 					selectedVariation = 0;
 				}
 				if (selected)
@@ -547,60 +520,56 @@ namespace YimMenu::Submenus
 			ImGui::EndCombo();
 		}
 
-		int selectedType = 0;
-		bool selectionAvailable = true;
-		if (selectedEntry > 0)
-		{
-			const auto& beat = kVerifiedBeats[selectedEntry - 1];
-			selectedType = beat.Type;
-			const int variationCount = RuntimeVariationCount(beat);
-			selectionAvailable = variationCount > 0;
+		const auto& beat = kVerifiedBeats[selectedEntry];
+		const int selectedType = beat.Type;
+		const int variationCount = RuntimeVariationCount(beat);
+		const bool selectionAvailable = variationCount > 0;
 
-			if (beat.FixedVariationCount > 0)
-				ImGui::Text("Tipo interno: %d | Variacoes verificadas: %d", beat.Type, variationCount);
-			else if (selectionAvailable)
-				ImGui::Text("Tipo interno: %d | Variacoes lidas do runtime: %d", beat.Type, variationCount);
-			else
-				ImGui::Text("Tipo interno: %d | Datafile dinamico ainda indisponivel", beat.Type);
-
-			ImGui::Checkbox("Variacao automatica", &automaticVariation);
-			if (!automaticVariation && selectionAvailable)
-			{
-				selectedVariation = std::clamp(selectedVariation, 0, variationCount - 1);
-				ImGui::SliderInt("Variacao", &selectedVariation, 0, variationCount - 1);
-			}
-		}
+		if (beat.FixedVariationCount > 0)
+			ImGui::Text("Tipo interno: %d | Variacoes verificadas: %d", beat.Type, variationCount);
+		else if (selectionAvailable)
+			ImGui::Text("Tipo interno: %d | Variacoes lidas do runtime: %d", beat.Type, variationCount);
 		else
+			ImGui::Text("Tipo interno: %d | Datafile dinamico ainda indisponivel", beat.Type);
+
+		if (selectionAvailable)
 		{
-			ImGui::TextWrapped("Aleatorio sorteia entre todas as familias verificadas. Eventos dinamicos entram no sorteio somente quando o proprio jogo fornece uma contagem valida pelo datafile.");
+			selectedVariation = std::clamp(selectedVariation, 0, variationCount - 1);
+			ImGui::SliderInt("Variacao EXATA", &selectedVariation, 0, variationCount - 1);
 		}
 
+		ImGui::TextWrapped("CONTROLE MANUAL: nao existe sorteio de evento, variacao ou porcentagem no caminho abaixo. O Tenebris envia somente o evento e a variacao escolhidos.");
 		ImGui::Separator();
-		ImGui::SliderInt("Chance de disparar a tentativa", &chance, 1, 100, "%d%%");
-		ImGui::TextWrapped("A porcentagem decide se o Tenebris entrega o candidato nesta tentativa. Quando entrega, usa score 1.5 para evitar somente a barreira aleatoria especifica vista em func_166. Localizacao, horario, clima, cooldown, visibilidade e regras do evento continuam valendo; 100%% nao significa spawn garantido no mundo.");
 
-		const bool allowed = solo && managerActive && managerHost && selectionAvailable && !s_TriggerBusy.load();
+		// Mesmo que sejamos Script Host, o disparo forcado continua limitado a 1 jogador
+		// para nao alterar a experiencia de terceiros. SoloOverride existe justamente para
+		// a sessao privada em que a consulta de host pode ser inconclusiva.
+		const bool allowed = solo && managerActive && selectionAvailable && !s_TriggerBusy.load();
 		if (!allowed)
 			ImGui::BeginDisabled();
-
-		if (ImGui::Button("Tentar agora (usar chance)"))
-			QueueBeatAttempt(selectedType, automaticVariation, selectedVariation, chance, true);
-		ImGui::SameLine();
-		if (ImGui::Button("Forcar tentativa agora"))
-			QueueBeatAttempt(selectedType, automaticVariation, selectedVariation, 100, false);
-
+		if (ImGui::Button("FORCAR AGORA - EVENTO EXATO"))
+			QueueExactBeat(selectedType, selectedVariation);
 		if (!allowed)
+			ImGui::EndDisabled();
+
+		ImGui::SameLine();
+		const bool canCancelPending = s_TriggerBusy.load();
+		if (!canCancelPending)
+			ImGui::BeginDisabled();
+		if (ImGui::Button("CANCELAR PEDIDO"))
+			CancelPendingBeat();
+		if (!canCancelPending)
 			ImGui::EndDisabled();
 
 		ImGui::Separator();
 		ImGui::TextWrapped("Status: %s", ResultText(s_LastResult.load()));
-		if (s_LastRoll.load() > 0)
-			ImGui::Text("Ultima rolagem Tenebris: %d/100", s_LastRoll.load());
 		if (s_LastCandidate.load() >= 0)
 			ImGui::Text("Ultimo candidato: %d | tipo %d | variacao %d", s_LastCandidate.load(), s_LastType.load(), s_LastVariation.load());
 		if (s_LastManagerState.load() >= 0)
 			ImGui::Text("Ultimo estado observado do manager: %d", s_LastManagerState.load());
 
-		ImGui::TextWrapped("Protecao: bloqueado fora de sessao solo e sem autoridade real sobre o net_beat_manager. O recurso nao tenta obter, migrar ou roubar Script Host.");
+		ImGui::TextWrapped("Importante: FORCAR AGORA remove a aleatoriedade do Tenebris e mantem o candidato escolhido durante a janela do manager. O script especifico do evento ainda pode recusar por regras proprias do jogo (local, streaming, visibilidade ou requisito do Beat). Nesse caso o Tenebris nao substitui silenciosamente por outro evento.");
+		ImGui::TextWrapped("CANCELAR PEDIDO interrompe apenas uma injecao Tenebris ainda em andamento e restaura os valores que ele proprio escreveu. Cancelamento de um evento que JA FOI CRIADO nao e simulado aqui: o estado 3 do net_beat_manager e apenas cooldown, nao o lifecycle do script/evento ativo.");
+		ImGui::TextWrapped("Protecao: o disparo forcado permanece bloqueado quando houver mais de 1 jogador ativo, mesmo se voce for o Script Host.");
 	}
 }
