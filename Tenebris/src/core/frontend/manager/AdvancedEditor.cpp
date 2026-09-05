@@ -38,13 +38,9 @@ namespace YimMenu
 		if (!g_Item)
 			return false;
 
-		// Backspace pertence ao menu classico da esquerda. Enquanto um editor
-		// avancado estiver aberto ele e consumido aqui para nao fechar a janela da
-		// direita nem navegar o menu por acidente. O editor fecha por Esc ou pelo X.
-		if (key == VK_BACK)
-			return true;
-
-		if (key == VK_ESCAPE)
+		// BACK e Esc fecham o editor avancado e devolvem o foco ao menu classico.
+		// O WndProc filtra auto-repeat, portanto um toque fecha apenas uma vez.
+		if (key == VK_BACK || key == VK_ESCAPE)
 		{
 			Close();
 			return true;
@@ -62,18 +58,21 @@ namespace YimMenu
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		if (!viewport || viewport->WorkSize.x < 320.0f || viewport->WorkSize.y < 240.0f)
 			return;
+
 		const ImVec2 display = viewport->WorkSize;
 		const ImVec2 origin = viewport->WorkPos;
-		const auto layout = GetResponsiveMenuLayout();
-		const float gap = std::max(8.0f, 10.0f * layout.Scale);
-		const float editorX = layout.X + layout.Width + gap;
-		const float viewportRight = origin.x + display.x;
-		const bool fitsBesideMenu = viewportRight - editorX >= 280.0f;
-		const ImVec2 editorPosition = fitsBesideMenu ? ImVec2(editorX, layout.Y) : ImVec2(origin.x + gap, origin.y + gap);
-		const float availableWidth = fitsBesideMenu ? viewportRight - editorX - gap : display.x - gap * 2.0f;
-		const float availableHeight = display.y - (editorPosition.y - origin.y) - gap;
+		const float gap = std::clamp(display.x * 0.0125f, 8.0f, 14.0f);
+
+		// Editor lateral compacto. Em 1280x720 ele ocupa aproximadamente um terco
+		// da tela e deixa o personagem livre no centro/esquerda para pre-visualizacao.
+		const float desiredWidth = std::clamp(display.x * 0.32f, 300.0f, 410.0f);
+		const float editorWidth = std::min(desiredWidth, display.x - gap * 2.0f);
+		const float availableHeight = std::max(180.0f, display.y - gap * 2.0f);
 		const float desiredHeight = g_Item->GetPreferredEditorHeight();
-		const ImVec2 editorSize(std::clamp(availableWidth, 260.0f, 520.0f), std::clamp(desiredHeight, 180.0f, availableHeight));
+		const float editorHeight = std::clamp(desiredHeight, 180.0f, availableHeight);
+		const ImVec2 editorPosition(origin.x + display.x - editorWidth - gap, origin.y + gap);
+		const ImVec2 editorSize(editorWidth, editorHeight);
+
 		ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
 		ImGui::SetNextWindowSize(editorSize, ImGuiCond_Always);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
@@ -81,7 +80,7 @@ namespace YimMenu
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 8.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 4.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(7.0f, 4.0f));
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.97f));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.95f));
 		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.30f, 0.055f, 1.0f));
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.13f, 0.19f, 0.043f, 1.0f));
 		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
@@ -94,6 +93,8 @@ namespace YimMenu
 				open = false;
 			ImGui::Separator();
 			ImGui::TextDisabled("%s", g_Item->GetMenuLabel().data());
+			ImGui::SameLine();
+			ImGui::TextDisabled("| BACK: voltar");
 			ImGui::Spacing();
 			if (ImGui::BeginChild("##TenebrisAdvancedContent", ImVec2(0.0f, 0.0f), false))
 			{
