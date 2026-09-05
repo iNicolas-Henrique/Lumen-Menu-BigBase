@@ -12,7 +12,7 @@
 #include "Player/Kick.hpp"
 #include "Player/Toxic.hpp"
 #include "Player/Trolling.hpp"
-#include "BoomPlus.hpp" // This includes the UI elements for Zombies/Indian Attack
+#include "BoomPlus.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -46,9 +46,9 @@ namespace YimMenu::Submenus
         return tags;
     }
 
-    static void DrawModderTooltip(YimMenu::Player player)
+    static void DrawModderTooltip(YimMenu::Player player, bool hovered)
     {
-        if (!player.IsModder() || !ImGui::IsItemHovered())
+        if (!player.IsModder() || !hovered)
             return;
 
         ImGui::BeginTooltip();
@@ -114,6 +114,22 @@ namespace YimMenu::Submenus
         return sortedPlayers;
     }
 
+    static bool DrawPlayerNameRow(const std::string& displayName, bool selected)
+    {
+        // O Selectable antigo deixava apenas o primeiro caractere visivel em certas
+        // combinacoes de tabela/clip do ImGui. Agora a area clicavel nao carrega o
+        // texto; o nome e desenhado explicitamente dentro do retangulo da linha.
+        const float rowHeight = ImGui::GetTextLineHeightWithSpacing() + 4.0f;
+        const bool clicked = ImGui::Selectable("##player_row", selected, ImGuiSelectableFlags_SpanAvailWidth, ImVec2(0.0f, rowHeight));
+        const bool hovered = ImGui::IsItemHovered();
+        const ImVec2 rowMin = ImGui::GetItemRectMin();
+        ImGui::GetWindowDrawList()->AddText(
+            ImVec2(rowMin.x + 5.0f, rowMin.y + 3.0f),
+            ImGui::GetColorU32(ImGuiCol_Text),
+            displayName.c_str());
+        return clicked || (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left));
+    }
+
     static void DrawPlayerList(bool external = true, float offset = 15.0f)
     {
         auto sortedPlayers = GetSortedPlayers();
@@ -122,7 +138,7 @@ namespace YimMenu::Submenus
         {
             ImGui::SetNextWindowPos(
                 ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x + offset, ImGui::GetWindowPos().y));
-            ImGui::SetNextWindowSize(ImVec2(260, ImGui::GetWindowSize().y));
+            ImGui::SetNextWindowSize(ImVec2(300, ImGui::GetWindowSize().y));
             ImGui::Begin("Player List", nullptr, ImGuiWindowFlags_NoDecoration);
 
             ImGui::Checkbox("Spectate", &YimMenu::g_Spectating);
@@ -132,7 +148,7 @@ namespace YimMenu::Submenus
                 ImGui::PushID(static_cast<int>(id));
                 if (ImGui::Selectable(displayName.c_str(), YimMenu::Players::GetSelected() == player))
                     YimMenu::Players::SetSelected(id);
-                DrawModderTooltip(player);
+                DrawModderTooltip(player, ImGui::IsItemHovered());
                 DrawTags(player);
                 ImGui::PopID();
             }
@@ -163,8 +179,8 @@ namespace YimMenu::Submenus
 
         if (ImGui::BeginTable("##TenebrisPlayerList", 2, tableFlags))
         {
-            ImGui::TableSetupColumn("Jogador", ImGuiTableColumnFlags_WidthStretch, 0.66f);
-            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 0.34f);
+            ImGui::TableSetupColumn("Jogador", ImGuiTableColumnFlags_WidthStretch, 0.70f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 0.30f);
             ImGui::TableHeadersRow();
 
             for (auto& [id, player] : sortedPlayers)
@@ -176,11 +192,9 @@ namespace YimMenu::Submenus
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
 
-                // Sem largura negativa: em algumas builds do ImGui ela reduz o clip
-                // do Selectable a quase zero e deixa visivel apenas a primeira letra.
-                if (ImGui::Selectable(displayName.c_str(), isSelected))
+                if (DrawPlayerNameRow(displayName, isSelected))
                     YimMenu::Players::SetSelected(id);
-                DrawModderTooltip(player);
+                DrawModderTooltip(player, ImGui::IsItemHovered());
 
                 ImGui::TableSetColumnIndex(1);
                 DrawTags(player);
@@ -192,9 +206,9 @@ namespace YimMenu::Submenus
 
         ImGui::Spacing();
         ImGui::Separator();
-        auto currentSelected = YimMenu::Players::GetSelected();
+        const auto currentSelected = YimMenu::Players::GetSelected();
         if (currentSelected.IsValid())
-            ImGui::TextDisabled("Selecionado: %s", currentSelected.GetName());
+            ImGui::Text("Selecionado: %s", currentSelected.GetName());
     }
 
     Players::Players() : Submenu::Submenu("Jogadores")
@@ -203,7 +217,7 @@ namespace YimMenu::Submenus
         AddCategory(BuildHelpfulMenu());
         AddCategory(BuildTrollingMenu());
         AddCategory(BuildToxicMenu());
-        AddCategory(BuildBoomPlusMenu()); // BoomPlus contains the Zombie/Indian Attack UI items
+        AddCategory(BuildBoomPlusMenu());
         AddCategory(BuildKickMenu());
 
         for (auto& category : m_Categories)
