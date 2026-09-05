@@ -4,8 +4,8 @@
 #include "ESP.hpp"
 #include "Menu.hpp"
 #include "Overlay.hpp"
-#include "core/commands/BoolCommand.hpp" // Required to use BoolCommand
-#include "core/commands/Commands.hpp"    // Required to access the command system
+#include "core/commands/BoolCommand.hpp"
+#include "core/commands/Commands.hpp"
 #include "core/frontend/Notifications.hpp"
 #include "core/frontend/manager/AdvancedEditor.hpp"
 #include "core/frontend/manager/UIManager.hpp"
@@ -66,18 +66,16 @@ namespace YimMenu
 
 	void GUI::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
-		// THIS IS THE FIX: The logic is now inverted to match your request.
-		// Get the state of the toggle command.
 		const auto use_insert_key = Commands::GetCommand<BoolCommand>("togglemenukey"_J)->GetState();
-		// If ticked (true), use Insert. If unticked (false), use F5.
 		const auto key_to_check = use_insert_key ? VK_INSERT : VK_F5;
 
-		if (m_IsOpen && !AdvancedEditor::IsOpen() && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
+		// Um unico WM_KEYDOWN novo por toque. O bit 30 fica ligado nas repeticoes
+		// automaticas do Windows, entao Q/E/BACK nao disparam varias vezes por frame.
+		if (m_IsOpen && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
 			UIManager::HandleKey(wparam);
 
 		if (msg == WM_KEYUP && wparam == key_to_check)
 		{
-			// Persist and restore the cursor position between menu instances
 			static POINT CursorCoords{};
 			if (m_IsOpen)
 			{
