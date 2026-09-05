@@ -22,10 +22,10 @@ namespace YimMenu::Submenus
 			int VariationCount;
 		};
 
-		// Verified against script_mp_rel/net_beat_manager.c for the current decompiled layout.
-		// These are the first 16 Network Beat types; keeping the table explicit makes a
-		// future game/global-layout update fail closed instead of silently selecting a
-		// different activity.
+		// Mapeado diretamente de script_mp_rel/net_beat_manager.c.
+		// Mantemos apenas a faixa 1..16 porque seus tamanhos/variacoes sao fixos e
+		// verificaveis no script. Isso evita calcular offsets de tipos posteriores
+		// que dependem de tabelas/datafiles carregados em runtime.
 		constexpr std::array<BeatDefinition, 16> kVerifiedBeats = {{
 		    {1, "Ataque de animal", 10},
 		    {2, "Ferido por flecha", 20},
@@ -55,8 +55,13 @@ namespace YimMenu::Submenus
 
 		constexpr int kVerifiedCandidateCount = VerifiedCandidateCount(); // 213
 
-		// net_beat_manager globals recovered from the same layout used by the current
-		// RDO decompiled scripts. Every access is validated before use.
+		// func_166 do net_beat_manager possui uma barreira aleatoria somente enquanto
+		// o score do candidato e menor que 1.5. Usar exatamente 1.5 evita o valor
+		// exagerado usado na primeira versao e remove apenas essa barreira especifica;
+		// todos os demais filtros do jogo continuam valendo.
+		constexpr float kHostChanceGateBypassScore = 1.5f;
+
+		// Globals recuperados do mesmo layout do net_beat_manager decompilado.
 		constexpr auto kBeatManagerThread = ScriptGlobal(1051252).At(16).At(16);
 		constexpr auto kBeatRuntime       = ScriptGlobal(1272030);
 		constexpr auto kPlayerBeatData    = ScriptGlobal(1268861);
@@ -66,7 +71,8 @@ namespace YimMenu::Submenus
 			Idle,
 			Queued,
 			Attempting,
-			Submitted,
+			ManagerAccepted,
+			SubmittedNoConfirmation,
 			ChanceMiss,
 			NotOnline,
 			NotSolo,
@@ -83,6 +89,7 @@ namespace YimMenu::Submenus
 		std::atomic_int s_LastType{0};
 		std::atomic_int s_LastVariation{-1};
 		std::atomic_int s_LastCandidate{-1};
+		std::atomic_int s_LastManagerState{-1};
 
 		int CountActivePlayers()
 		{
@@ -141,9 +148,10 @@ namespace YimMenu::Submenus
 			{
 				case TriggerResult::Idle: return "Pronto.";
 				case TriggerResult::Queued: return "Tentativa colocada na fila.";
-				case TriggerResult::Attempting: return "Enviando candidato ao net_beat_manager...";
-				case TriggerResult::Submitted: return "Tentativa enviada. O jogo ainda pode recusar por local, horario ou outras regras do Beat.";
-				case TriggerResult::ChanceMiss: return "A porcentagem desta tentativa nao passou; nenhum global foi alterado.";
+				case TriggerResult::Attempting: return "Entregando candidato ao net_beat_manager...";
+				case TriggerResult::ManagerAccepted: return "O manager entrou no estado de execucao do Beat. Ainda podem existir validacoes do script especifico do evento.";
+				case TriggerResult::SubmittedNoConfirmation: return "Candidato enviado, mas o manager nao confirmou a transicao durante a janela observada.";
+				case TriggerResult::ChanceMiss: return "A rolagem configurada no Tenebris nao passou; nenhum global foi alterado.";
 				case TriggerResult::NotOnline: return "Red Dead Online nao esta em progresso.";
 				case TriggerResult::NotSolo: return "Bloqueado: esta funcao so aceita sessao solo (1 jogador ativo).";
 				case TriggerResult::ManagerInactive: return "net_beat_manager nao esta ativo nesta sessao.";
@@ -201,7 +209,8 @@ namespace YimMenu::Submenus
 				auto candidateGlobal = kPlayerBeatData.At(localSlot, 99).At(92);
 				auto scoreGlobal     = kPlayerBeatData.At(localSlot, 99).At(93);
 				auto candidateCount  = kBeatRuntime.At(3270);
-				if (!candidateGlobal.CanAccess(true) || !scoreGlobal.CanAccess(true) || !candidateCount.CanAccess(true))
+				auto managerState    = kBeatRuntime.At(3279);
+				if (!candidateGlobal.CanAccess(true) || !scoreGlobal.CanAccess(true) || !candidateCount.CanAccess(true) || !managerState.CanAccess(true))
 				{
 					finish(TriggerResult::GlobalsUnavailable);
 					return;
@@ -213,6 +222,14 @@ namespace YimMenu::Submenus
 					finish(TriggerResult::LayoutMismatch);
 					return;
 				}
+
+				const int initialManagerState = *managerState.As<int*>();
+				if (initialManagerState < 0 || initialManagerState > 3)
+				{
+					finish(TriggerResult::LayoutMismatch);
+					return;
+				}
+				s_LastManagerState = initialManagerState;
 
 				std::random_device rd;
 				std::mt19937 rng(rd());
@@ -228,8 +245,8 @@ namespace YimMenu::Submenus
 				std::vector<std::pair<int, int>> attempts; // type, variation
 				if (selectedType == 0)
 				{
-					// One randomized variation from every verified type. This avoids biasing
-					// the random option toward event families that simply have more locations.
+					// Uma variacao sorteada de cada familia evita favorecer tipos que apenas
+					// possuem mais pontos no mapa.
 					for (const auto& beat : kVerifiedBeats)
 					{
 						std::uniform_int_distribution<int> variationDistribution(0, beat.VariationCount - 1);
@@ -259,10 +276,12 @@ namespace YimMenu::Submenus
 				}
 
 				auto* candidate = candidateGlobal.As<int*>();
-				auto* score     = scoreGlobal.As<float*>();
+				auto* score = scoreGlobal.As<float*>();
+				auto* state = managerState.As<int*>();
 				const int originalCandidate = *candidate;
-				const float originalScore   = *score;
-				int lastForcedCandidate     = -1;
+				const float originalScore = *score;
+				int lastForcedCandidate = -1;
+				bool managerAccepted = false;
 				s_LastResult = TriggerResult::Attempting;
 
 				for (const auto& [type, variation] : attempts)
@@ -297,33 +316,51 @@ namespace YimMenu::Submenus
 					s_LastVariation = variation;
 					s_LastCandidate = forcedCandidate;
 
-					// Keep the candidate above the local scanner long enough for the host
-					// arbitration pass to see it. The manager still performs its own normal
-					// eligibility/visibility/location checks before an activity is launched.
+					*candidate = forcedCandidate;
+					*score = kHostChanceGateBypassScore;
+
+					// O manager trabalha por estados 0..3. No decompilado, o estado 3 e
+					// alcancado depois que func_53 encontra um candidato e envia a atividade.
+					// Se o jogo substituir nosso candidato antes disso, nao lutamos contra
+					// a escrita dele: abandonamos esta variacao e testamos a seguinte.
 					for (int pulse = 0; pulse < 8; ++pulse)
 					{
-						*candidate = forcedCandidate;
-						*score = 1000000.0f;
 						ScriptMgr::Yield(std::chrono::milliseconds(75));
+						s_LastManagerState = *state;
+
+						if (*state == 3)
+						{
+							managerAccepted = true;
+							break;
+						}
+
+						if (*candidate != forcedCandidate)
+							break;
+
+						// Mantem apenas o score minimo necessario; nao reescreve o candidato.
+						*score = kHostChanceGateBypassScore;
 					}
+
+					if (managerAccepted)
+						break;
 				}
 
-				// Do not leave a forced candidate resident. Restore only if our own value
-				// is still present; if the game already replaced it, preserve the game's data.
+				// Nao deixa valor forcado residente. Restaura somente se o jogo ainda nao
+				// substituiu o candidato; assim nunca sobrescrevemos uma atualizacao nova.
 				if (lastForcedCandidate >= 0 && *candidate == lastForcedCandidate)
 				{
 					*candidate = originalCandidate;
 					*score = originalScore;
 				}
 
-				finish(TriggerResult::Submitted);
+				finish(managerAccepted ? TriggerResult::ManagerAccepted : TriggerResult::SubmittedNoConfirmation);
 			});
 		}
 	}
 
 	void RenderNetworkBeatsMenu()
 	{
-		static int selectedEntry = 0; // 0 = random, 1..N = verified beat
+		static int selectedEntry = 0; // 0 = aleatorio, 1..N = Beat verificado
 		static int selectedVariation = 0;
 		static bool automaticVariation = true;
 		static int chance = 100;
@@ -374,21 +411,21 @@ namespace YimMenu::Submenus
 		}
 		else
 		{
-			ImGui::Text("Aleatorio usa 1 variacao de cada um dos 16 tipos verificados e deixa o manager validar.");
+			ImGui::TextWrapped("Aleatorio sorteia entre as 16 familias verificadas. Cada familia recebe uma variacao antes de a ordem ser embaralhada.");
 		}
 
 		ImGui::Separator();
-		ImGui::SliderInt("Chance da tentativa Tenebris", &chance, 1, 100, "%d%%");
-		ImGui::TextWrapped("Esta porcentagem controla se o Tenebris envia a tentativa. Nao altera a chance interna da Rockstar. Mesmo em 100%%, o jogo ainda pode rejeitar o Beat por localizacao, horario, clima, cooldown ou outra regra de elegibilidade.");
+		ImGui::SliderInt("Chance de disparar a tentativa", &chance, 1, 100, "%d%%");
+		ImGui::TextWrapped("A porcentagem acima decide se o Tenebris entrega o candidato ao manager nesta tentativa. Quando entrega, usa score 1.5, que evita a barreira aleatoria especifica vista em func_166 do net_beat_manager. Isso NAO ignora localizacao, horario, clima, cooldown, visibilidade, recursos de rede ou regras do script do evento; portanto 100%% nao significa spawn garantido no mundo.");
 
 		const bool allowed = solo && managerActive && managerHost && !s_TriggerBusy.load();
 		if (!allowed)
 			ImGui::BeginDisabled();
 
-		if (ImGui::Button("Tentar agora (respeitar chance)"))
+		if (ImGui::Button("Tentar agora (usar chance)"))
 			QueueBeatAttempt(selectedType, automaticVariation, selectedVariation, chance, true);
 		ImGui::SameLine();
-		if (ImGui::Button("Forcar tentativa (100%)"))
+		if (ImGui::Button("Forcar tentativa agora"))
 			QueueBeatAttempt(selectedType, automaticVariation, selectedVariation, 100, false);
 
 		if (!allowed)
@@ -397,10 +434,12 @@ namespace YimMenu::Submenus
 		ImGui::Separator();
 		ImGui::TextWrapped("Status: %s", ResultText(s_LastResult.load()));
 		if (s_LastRoll.load() > 0)
-			ImGui::Text("Ultimo sorteio Tenebris: %d/100", s_LastRoll.load());
+			ImGui::Text("Ultima rolagem Tenebris: %d/100", s_LastRoll.load());
 		if (s_LastCandidate.load() >= 0)
 			ImGui::Text("Ultimo candidato: %d | tipo %d | variacao %d", s_LastCandidate.load(), s_LastType.load(), s_LastVariation.load());
+		if (s_LastManagerState.load() >= 0)
+			ImGui::Text("Ultimo estado observado do manager: %d", s_LastManagerState.load());
 
-		ImGui::TextWrapped("Protecao: o acionamento e bloqueado fora de sessao solo e quando voce nao controla o net_beat_manager. O recurso nao tenta obter/roubar Script Host.");
+		ImGui::TextWrapped("Protecao: bloqueado fora de sessao solo e sem autoridade real sobre o net_beat_manager. O recurso nao tenta obter, migrar ou roubar Script Host.");
 	}
 }
