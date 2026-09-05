@@ -51,6 +51,18 @@ namespace YimMenu
 		{
 			return 240.0f;
 		}
+		virtual void OnEditorOpened()
+		{
+		}
+		virtual void OnEditorClosed()
+		{
+		}
+		// Recebe teclas enquanto o editor avancado esta aberto. Retorna true
+		// quando a tecla foi consumida pelo editor.
+		virtual bool HandleEditorKey(int)
+		{
+			return false;
+		}
 		virtual bool IsVisible() const
 		{
 			return true;
