@@ -19,14 +19,14 @@ namespace YimMenu::Submenus
 		{
 			int Type;
 			const char* Name;
-			int VariationCount;
+			int FixedVariationCount; // 0 = ler a quantidade do runtime/datafile
 		};
 
 		// Mapeado diretamente de script_mp_rel/net_beat_manager.c.
-		// Mantemos apenas a faixa 1..16 porque seus tamanhos/variacoes sao fixos e
-		// verificaveis no script. Isso evita calcular offsets de tipos posteriores
-		// que dependem de tabelas/datafiles carregados em runtime.
-		constexpr std::array<BeatDefinition, 16> kVerifiedBeats = {{
+		// Tipos 1..34 possuem quantidade fixa no proprio script.
+		// Tipos 35..42 usam datafiles carregados em runtime; nunca chutamos a quantidade.
+		// O tipo 43 permanece de fora porque o hash ainda nao foi nomeado com seguranca.
+		constexpr std::array<BeatDefinition, 42> kVerifiedBeats = {{
 		    {1, "Ataque de animal", 10},
 		    {2, "Ferido por flecha", 20},
 		    {3, "Protetor de ovos", 21},
@@ -43,28 +43,47 @@ namespace YimMenu::Submenus
 		    {14, "Duelo", 10},
 		    {15, "Acampamento de moonshine", 12},
 		    {16, "Mendigo", 15},
+		    {17, "Cacador perseguidor", 11},
+		    {18, "Cacador caido", 10},
+		    {19, "Carroca acidentada", 7},
+		    {20, "Armadilha de suspensao", 8},
+		    {21, "Animal lendario: urso", 13},
+		    {22, "Animal lendario: puma", 20},
+		    {23, "Animal lendario: pantera", 15},
+		    {24, "Animal lendario: javali", 11},
+		    {25, "Animal lendario: bisao", 10},
+		    {26, "Animal lendario: raposa", 20},
+		    {27, "Animal lendario: lobo", 25},
+		    {28, "Animal lendario: castor", 10},
+		    {29, "Animal lendario: coiote", 10},
+		    {30, "Animal lendario: alce (moose)", 10},
+		    {31, "Animal lendario: jacare", 15},
+		    {32, "Animal lendario: cervo", 10},
+		    {33, "Animal lendario: carneiro", 10},
+		    {34, "Animal lendario: elk", 10},
+		    {35, "Esconderijo (dinamico)", 0},
+		    {36, "Emboscada (dinamico)", 0},
+		    {37, "Resgate multiplo (dinamico)", 0},
+		    {38, "Escolta (dinamico)", 0},
+		    {39, "Defesa de acampamento (dinamico)", 0},
+		    {40, "Sabotagem de moonshine (dinamico)", 0},
+		    {41, "Destruir moonshine (dinamico)", 0},
+		    {42, "Bloqueio de estrada moonshine (dinamico)", 0},
 		}};
 
-		constexpr int VerifiedCandidateCount()
-		{
-			int total = 0;
-			for (const auto& beat : kVerifiedBeats)
-				total += beat.VariationCount;
-			return total;
-		}
-
-		constexpr int kVerifiedCandidateCount = VerifiedCandidateCount(); // 213
+		constexpr int kStaticCandidateCount = 438; // soma exata dos tipos 1..34
+		constexpr int kMaxRuntimeCandidateCount = 817;
 
 		// func_166 do net_beat_manager possui uma barreira aleatoria somente enquanto
-		// o score do candidato e menor que 1.5. Usar exatamente 1.5 evita o valor
-		// exagerado usado na primeira versao e remove apenas essa barreira especifica;
-		// todos os demais filtros do jogo continuam valendo.
+		// o score do candidato e menor que 1.5. Usar exatamente 1.5 remove apenas
+		// essa barreira especifica; todos os demais filtros do jogo continuam valendo.
 		constexpr float kHostChanceGateBypassScore = 1.5f;
 
 		// Globals recuperados do mesmo layout do net_beat_manager decompilado.
 		constexpr auto kBeatManagerThread = ScriptGlobal(1051252).At(16).At(16);
-		constexpr auto kBeatRuntime       = ScriptGlobal(1272030);
-		constexpr auto kPlayerBeatData    = ScriptGlobal(1268861);
+		constexpr auto kBeatRuntime = ScriptGlobal(1272030);
+		constexpr auto kPlayerBeatData = ScriptGlobal(1268861);
+		constexpr auto kDynamicBeatData = ScriptGlobal(1257541);
 
 		enum class TriggerResult : int
 		{
@@ -79,6 +98,7 @@ namespace YimMenu::Submenus
 			ManagerInactive,
 			NotManagerHost,
 			GlobalsUnavailable,
+			DynamicDataUnavailable,
 			LayoutMismatch,
 			Busy,
 		};
@@ -120,18 +140,6 @@ namespace YimMenu::Submenus
 			return PLAYER::PLAYER_ID() == NETWORK::_0xB4A25351D79B444C(threadId);
 		}
 
-		int CandidateBaseForType(int type)
-		{
-			int base = 0;
-			for (const auto& beat : kVerifiedBeats)
-			{
-				if (beat.Type == type)
-					return base;
-				base += beat.VariationCount;
-			}
-			return -1;
-		}
-
 		const BeatDefinition* FindBeat(int type)
 		{
 			for (const auto& beat : kVerifiedBeats)
@@ -140,6 +148,51 @@ namespace YimMenu::Submenus
 					return &beat;
 			}
 			return nullptr;
+		}
+
+		int RuntimeVariationCount(const BeatDefinition& beat)
+		{
+			if (beat.FixedVariationCount > 0)
+				return beat.FixedVariationCount;
+
+			if (beat.Type < 35 || beat.Type > 42)
+				return -1;
+
+			// net_beat_manager::func_86 -> Global_1272030.f_3348[type]
+			// net_beat_manager::func_188 -> Global_1257541[dataIndex /*5*/].f_3
+			auto dataIndexGlobal = kBeatRuntime.At(3348).At(beat.Type);
+			if (!dataIndexGlobal.CanAccess(true))
+				return -1;
+
+			const int dataIndex = *dataIndexGlobal.As<int*>();
+			if (dataIndex < 0)
+				return -1;
+
+			auto countGlobal = kDynamicBeatData.At(dataIndex, 5).At(3);
+			if (!countGlobal.CanAccess(true))
+				return -1;
+
+			const int count = *countGlobal.As<int*>();
+			if (count <= 0 || count > kMaxRuntimeCandidateCount)
+				return -1;
+
+			return count;
+		}
+
+		int CandidateBaseForType(int type)
+		{
+			int base = 0;
+			for (const auto& beat : kVerifiedBeats)
+			{
+				if (beat.Type == type)
+					return base;
+
+				const int count = RuntimeVariationCount(beat);
+				if (count <= 0 || base > (kMaxRuntimeCandidateCount - count))
+					return -1;
+				base += count;
+			}
+			return -1;
 		}
 
 		const char* ResultText(TriggerResult result)
@@ -157,6 +210,7 @@ namespace YimMenu::Submenus
 				case TriggerResult::ManagerInactive: return "net_beat_manager nao esta ativo nesta sessao.";
 				case TriggerResult::NotManagerHost: return "Bloqueado: voce nao e o Script Host do net_beat_manager.";
 				case TriggerResult::GlobalsUnavailable: return "Globais do Beat Manager indisponiveis; nenhuma escrita foi feita.";
+				case TriggerResult::DynamicDataUnavailable: return "O datafile deste evento dinamico ainda nao forneceu uma contagem valida; nenhuma escrita foi feita.";
 				case TriggerResult::LayoutMismatch: return "Layout de globals diferente do esperado; recurso desativado por seguranca.";
 				case TriggerResult::Busy: return "Ja existe uma tentativa em andamento.";
 			}
@@ -207,9 +261,9 @@ namespace YimMenu::Submenus
 				}
 
 				auto candidateGlobal = kPlayerBeatData.At(localSlot, 99).At(92);
-				auto scoreGlobal     = kPlayerBeatData.At(localSlot, 99).At(93);
-				auto candidateCount  = kBeatRuntime.At(3270);
-				auto managerState    = kBeatRuntime.At(3279);
+				auto scoreGlobal = kPlayerBeatData.At(localSlot, 99).At(93);
+				auto candidateCount = kBeatRuntime.At(3270);
+				auto managerState = kBeatRuntime.At(3279);
 				if (!candidateGlobal.CanAccess(true) || !scoreGlobal.CanAccess(true) || !candidateCount.CanAccess(true) || !managerState.CanAccess(true))
 				{
 					finish(TriggerResult::GlobalsUnavailable);
@@ -217,7 +271,7 @@ namespace YimMenu::Submenus
 				}
 
 				const int runtimeCandidateCount = *candidateCount.As<int*>();
-				if (runtimeCandidateCount < kVerifiedCandidateCount || runtimeCandidateCount > 817)
+				if (runtimeCandidateCount < kStaticCandidateCount || runtimeCandidateCount > kMaxRuntimeCandidateCount)
 				{
 					finish(TriggerResult::LayoutMismatch);
 					return;
@@ -245,11 +299,14 @@ namespace YimMenu::Submenus
 				std::vector<std::pair<int, int>> attempts; // type, variation
 				if (selectedType == 0)
 				{
-					// Uma variacao sorteada de cada familia evita favorecer tipos que apenas
-					// possuem mais pontos no mapa.
+					// Uma variacao sorteada de cada familia valida evita favorecer tipos que
+					// simplesmente possuem mais pontos no mapa. Dinamicos sem datafile sao ignorados.
 					for (const auto& beat : kVerifiedBeats)
 					{
-						std::uniform_int_distribution<int> variationDistribution(0, beat.VariationCount - 1);
+						const int variationCount = RuntimeVariationCount(beat);
+						if (variationCount <= 0)
+							continue;
+						std::uniform_int_distribution<int> variationDistribution(0, variationCount - 1);
 						attempts.emplace_back(beat.Type, variationDistribution(rng));
 					}
 					std::shuffle(attempts.begin(), attempts.end(), rng);
@@ -263,16 +320,29 @@ namespace YimMenu::Submenus
 						return;
 					}
 
+					const int variationCount = RuntimeVariationCount(*beat);
+					if (variationCount <= 0)
+					{
+						finish(beat->FixedVariationCount == 0 ? TriggerResult::DynamicDataUnavailable : TriggerResult::LayoutMismatch);
+						return;
+					}
+
 					if (automaticVariation)
 					{
-						for (int variation = 0; variation < beat->VariationCount; ++variation)
+						for (int variation = 0; variation < variationCount; ++variation)
 							attempts.emplace_back(beat->Type, variation);
 						std::shuffle(attempts.begin(), attempts.end(), rng);
 					}
 					else
 					{
-						attempts.emplace_back(beat->Type, std::clamp(selectedVariation, 0, beat->VariationCount - 1));
+						attempts.emplace_back(beat->Type, std::clamp(selectedVariation, 0, variationCount - 1));
 					}
+				}
+
+				if (attempts.empty())
+				{
+					finish(TriggerResult::DynamicDataUnavailable);
+					return;
 				}
 
 				auto* candidate = candidateGlobal.As<int*>();
@@ -302,9 +372,13 @@ namespace YimMenu::Submenus
 						return;
 					}
 
-					const int base = CandidateBaseForType(type);
 					const auto* beat = FindBeat(type);
-					if (base < 0 || !beat || variation < 0 || variation >= beat->VariationCount)
+					if (!beat)
+						continue;
+
+					const int variationCount = RuntimeVariationCount(*beat);
+					const int base = CandidateBaseForType(type);
+					if (base < 0 || variationCount <= 0 || variation < 0 || variation >= variationCount)
 						continue;
 
 					const int forcedCandidate = base + variation;
@@ -321,8 +395,7 @@ namespace YimMenu::Submenus
 
 					// O manager trabalha por estados 0..3. No decompilado, o estado 3 e
 					// alcancado depois que func_53 encontra um candidato e envia a atividade.
-					// Se o jogo substituir nosso candidato antes disso, nao lutamos contra
-					// a escrita dele: abandonamos esta variacao e testamos a seguinte.
+					// Se o jogo substituir nosso candidato, nao lutamos contra a escrita dele.
 					for (int pulse = 0; pulse < 8; ++pulse)
 					{
 						ScriptMgr::Yield(std::chrono::milliseconds(75));
@@ -337,7 +410,7 @@ namespace YimMenu::Submenus
 						if (*candidate != forcedCandidate)
 							break;
 
-						// Mantem apenas o score minimo necessario; nao reescreve o candidato.
+						// Mantem somente o score minimo necessario; nao reescreve o candidato.
 						*score = kHostChanceGateBypassScore;
 					}
 
@@ -397,28 +470,38 @@ namespace YimMenu::Submenus
 		}
 
 		int selectedType = 0;
+		bool selectionAvailable = true;
 		if (selectedEntry > 0)
 		{
 			const auto& beat = kVerifiedBeats[selectedEntry - 1];
 			selectedType = beat.Type;
-			ImGui::Text("Tipo interno: %d | Variacoes conhecidas: %d", beat.Type, beat.VariationCount);
+			const int variationCount = RuntimeVariationCount(beat);
+			selectionAvailable = variationCount > 0;
+
+			if (beat.FixedVariationCount > 0)
+				ImGui::Text("Tipo interno: %d | Variacoes verificadas: %d", beat.Type, variationCount);
+			else if (selectionAvailable)
+				ImGui::Text("Tipo interno: %d | Variacoes lidas do runtime: %d", beat.Type, variationCount);
+			else
+				ImGui::Text("Tipo interno: %d | Datafile dinamico ainda indisponivel", beat.Type);
+
 			ImGui::Checkbox("Variacao automatica", &automaticVariation);
-			if (!automaticVariation)
+			if (!automaticVariation && selectionAvailable)
 			{
-				selectedVariation = std::clamp(selectedVariation, 0, beat.VariationCount - 1);
-				ImGui::SliderInt("Variacao", &selectedVariation, 0, beat.VariationCount - 1);
+				selectedVariation = std::clamp(selectedVariation, 0, variationCount - 1);
+				ImGui::SliderInt("Variacao", &selectedVariation, 0, variationCount - 1);
 			}
 		}
 		else
 		{
-			ImGui::TextWrapped("Aleatorio sorteia entre as 16 familias verificadas. Cada familia recebe uma variacao antes de a ordem ser embaralhada.");
+			ImGui::TextWrapped("Aleatorio sorteia entre todas as familias verificadas. Eventos dinamicos entram no sorteio somente quando o proprio jogo fornece uma contagem valida pelo datafile.");
 		}
 
 		ImGui::Separator();
 		ImGui::SliderInt("Chance de disparar a tentativa", &chance, 1, 100, "%d%%");
 		ImGui::TextWrapped("A porcentagem acima decide se o Tenebris entrega o candidato ao manager nesta tentativa. Quando entrega, usa score 1.5, que evita a barreira aleatoria especifica vista em func_166 do net_beat_manager. Isso NAO ignora localizacao, horario, clima, cooldown, visibilidade, recursos de rede ou regras do script do evento; portanto 100%% nao significa spawn garantido no mundo.");
 
-		const bool allowed = solo && managerActive && managerHost && !s_TriggerBusy.load();
+		const bool allowed = solo && managerActive && managerHost && selectionAvailable && !s_TriggerBusy.load();
 		if (!allowed)
 			ImGui::BeginDisabled();
 
