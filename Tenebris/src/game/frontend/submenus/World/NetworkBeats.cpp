@@ -1,4 +1,5 @@
 #include "NetworkBeats.hpp"
+#include "NetworkBeatLocations.hpp"
 
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/ScriptMgr.hpp"
@@ -778,10 +779,31 @@ namespace YimMenu::Submenus
 		if (selectionAvailable)
 		{
 			selectedVariation = std::clamp(selectedVariation, 0, variationCount - 1);
-			ImGui::SliderInt("Variacao EXATA", &selectedVariation, 0, variationCount - 1);
+			const auto locationPreview = NetworkBeatLocations::Display(beat.Type, selectedVariation);
+			if (ImGui::BeginCombo("Local / variacao EXATA", locationPreview.c_str()))
+			{
+				for (int variation = 0; variation < variationCount; ++variation)
+				{
+					const auto locationLabel = NetworkBeatLocations::Display(beat.Type, variation);
+					const bool selected = selectedVariation == variation;
+					ImGui::PushID(variation);
+					if (ImGui::Selectable(locationLabel.c_str(), selected))
+						selectedVariation = variation;
+					if (selected)
+						ImGui::SetItemDefaultFocus();
+					ImGui::PopID();
+				}
+				ImGui::EndCombo();
+			}
+
+			if (const char* mappedLocation = NetworkBeatLocations::Get(beat.Type, selectedVariation))
+				ImGui::Text("Local mapeado: %s | indice interno: %d", mappedLocation, selectedVariation);
+			else
+				ImGui::Text("Indice interno: %d | local ainda nao mapeado com seguranca", selectedVariation);
 		}
 
 		ImGui::TextWrapped("CONTROLE MANUAL: o Tenebris entrega somente o evento e a variacao escolhidos. Score 1.5 remove a rolagem de chance do manager; se as regras proprias do evento recusarem local/streaming/requisito, nenhum outro evento e usado.");
+		ImGui::TextWrapped("LOCAL EXATO: tipos estaticos 1..20 usam a ordem do net_beat_manager; nomes foram cruzados com o Jean Ropke RDOMap. Tipos ainda sem ordem segura continuam mostrando somente o indice interno.");
 		ImGui::Separator();
 
 		const bool operationBusy = s_TriggerBusy.load() || s_ActiveCancelBusy.load();
@@ -816,9 +838,14 @@ namespace YimMenu::Submenus
 			ImGui::Text("Thread: %d", activeThread ? static_cast<int>(activeThread->m_Context.m_ThreadId) : -1);
 
 			if (s_LastConfirmedType.load() == activeBeat->Type && s_LastConfirmedVariation.load() >= 0)
-				ImGui::Text("Variacao: %d (rastreada pelo Tenebris)", s_LastConfirmedVariation.load());
+			{
+				const auto activeLocation = NetworkBeatLocations::Display(activeBeat->Type, s_LastConfirmedVariation.load());
+				ImGui::Text("Local/variacao: %s (rastreado pelo Tenebris)", activeLocation.c_str());
+			}
 			else
+			{
 				ImGui::TextUnformatted("Variacao: nao rastreada (evento nao confirmado por este disparo)");
+			}
 
 			const bool canCancelActive = solo
 			    && activeBeat->ExitStateLocal >= 0
