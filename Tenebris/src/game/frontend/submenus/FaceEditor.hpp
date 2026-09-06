@@ -4,10 +4,10 @@
 
 namespace YimMenu
 {
-	class UIItem;
+	class Submenu;
 }
 
 namespace YimMenu::Submenus
 {
-	std::shared_ptr<UIItem> CreateVehicleSpawnerItem();
+	void InstallFaceEditor(const std::shared_ptr<Submenu>& selfSubmenu);
 }

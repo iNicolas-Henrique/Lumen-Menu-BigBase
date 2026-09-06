@@ -46,7 +46,9 @@ jobs:
           if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "T E N E B R I S" -Quiet)) {
             throw "Logo TENEBRIS do console ausente."
           }
-          if (-not (Select-String -Path "Tenebris/src/core/frontend/manager/UIManager.cpp" -Pattern "T E N E B R I S" -Quiet)) {
+          # O cabecalho grafico agora desenha as letras individualmente para permitir
+          # a animacao organica por glifo, por isso a verificacao usa a marca sem espacos.
+          if (-not (Select-String -Path "Tenebris/src/core/frontend/manager/UIManager.cpp" -Pattern "TENEBRIS" -Quiet)) {
             throw "Marca TENEBRIS do menu ausente."
           }
           exit 0

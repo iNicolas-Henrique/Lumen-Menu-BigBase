@@ -9,5 +9,5 @@ namespace YimMenu
 
 namespace YimMenu::Submenus
 {
-	std::shared_ptr<UIItem> CreateVehicleSpawnerItem();
+	std::shared_ptr<UIItem> CreateWeatherSelectorItem();
 }
