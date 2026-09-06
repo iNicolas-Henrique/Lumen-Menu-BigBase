@@ -1,20 +1,12 @@
 #include "core/commands/Command.hpp"
-#include "core/commands/Commands.hpp"
-#include "core/commands/IntCommand.hpp"
-#include "core/logger/LogHelper.hpp"
 #include "game/backend/Self.hpp"
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Natives.hpp"
-
-#include <algorithm>
 
 namespace YimMenu::Features
 {
 	namespace
 	{
-		IntCommand g_BountyAmount("bountyamount", "Valor da recompensa", "Digite o valor em centavos do jogo (100 = $1,00) e selecione Aplicar recompensa. O jogo ainda pode impor um limite interno.", 0, INT_MAX, 0);
-		IntCommand g_WantedScore("wantedscore", "Nivel de procura da lei", "Intensidade local de procura da lei entre 0 e 5; não é a hostilidade online do jogador.", 0, 5, 0);
-
 		class RestorePlayerCommand final : public Command
 		{
 		public:
@@ -62,7 +54,7 @@ namespace YimMenu::Features
 		{
 		public:
 			RefillCoresCommand() :
-			    Command("refillcoresnow", "Preencher nucleos", "Preenche imediatamente os nucleos de vida, vigor e Olho da Morte.")
+			    Command("refillcoresnow", "Preencher núcleos", "Preenche imediatamente os núcleos de vida, vigor e Olho da Morte.")
 			{
 			}
 
@@ -96,23 +88,6 @@ namespace YimMenu::Features
 			}
 		};
 
-		class RandomOutfitCommand final : public Command
-		{
-		public:
-			RandomOutfitCommand() :
-			    Command("randomoutfit", "Traje aleatorio", "Aplica uma variação aleatória compatível com o modelo atual.")
-			{
-			}
-
-		private:
-			void OnCall() override
-			{
-				auto ped = Self::GetPed();
-				if (ped)
-					PED::_SET_RANDOM_OUTFIT_VARIATION(ped.GetHandle(), true);
-			}
-		};
-
 		class ClearTasksCommand final : public Command
 		{
 		public:
@@ -134,7 +109,7 @@ namespace YimMenu::Features
 		{
 		public:
 			RagdollPlayerCommand() :
-			    Command("ragdollplayer", "Cair no chao", "Coloca o personagem em ragdoll por dois segundos.")
+			    Command("ragdollplayer", "Cair no chão", "Coloca o personagem em ragdoll por dois segundos.")
 			{
 			}
 
@@ -164,87 +139,19 @@ namespace YimMenu::Features
 			}
 		};
 
-		class GroundPlayerCommand final : public Command
-		{
-		public:
-			GroundPlayerCommand() :
-			    Command("groundplayer", "Colocar no solo", "Reposiciona o personagem sobre a superfície abaixo dele.")
-			{
-			}
-
-		private:
-			void OnCall() override
-			{
-				auto ped = Self::GetPed();
-				if (ped)
-					ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(ped.GetHandle(), true);
-			}
-		};
-
-		class ApplyBountyCommand final : public Command
-		{
-		public:
-			ApplyBountyCommand() :
-			    Command("applybounty", "Aplicar recompensa", "Aplica ao personagem o valor configurado acima.")
-			{
-			}
-
-		private:
-			void OnCall() override
-			{
-				const int amount = std::max(0, g_BountyAmount.GetState());
-				LOG(INFO) << "Applying local bounty value: " << amount;
-				LAW::SET_BOUNTY(PLAYER::PLAYER_ID(), amount);
-			}
-		};
-
-		class ApplyWantedScoreCommand final : public Command
-		{
-		public:
-			ApplyWantedScoreCommand() :
-			    Command("applywantedscore", "Aplicar procura da lei", "Aplica o nível de procura da lei configurado acima.")
-			{
-			}
-
-		private:
-			void OnCall() override
-			{
-				LAW::SET_WANTED_SCORE(PLAYER::PLAYER_ID(), g_WantedScore.GetState());
-				if (g_WantedScore.GetState() > 0)
-					LAW::_FORCE_LAW_ON_LOCAL_PLAYER_IMMEDIATELY();
-			}
-		};
-
 		class MaximumWantedScoreCommand final : public Command
 		{
 		public:
 			MaximumWantedScoreCommand() :
-			    Command("maximumhostility", "Procura maxima da lei", "Define a intensidade de procura como 5 e chama a lei imediatamente.")
+			    Command("maximumhostility", "Nível máximo de procurado", "Coloca a procura da lei diretamente no nível 5 e faz a polícia perseguir você imediatamente.")
 			{
 			}
 
 		private:
 			void OnCall() override
 			{
-				g_WantedScore.SetState(5);
 				LAW::SET_WANTED_SCORE(PLAYER::PLAYER_ID(), 5);
 				LAW::_FORCE_LAW_ON_LOCAL_PLAYER_IMMEDIATELY();
-			}
-		};
-
-		class ReadLawStateCommand final : public Command
-		{
-		public:
-			ReadLawStateCommand() :
-			    Command("readlawstate", "Ler valores atuais", "Atualiza os campos com a recompensa e procura da lei atuais.")
-			{
-			}
-
-		private:
-			void OnCall() override
-			{
-				g_BountyAmount.SetState(std::max(0, LAW::GET_BOUNTY(PLAYER::PLAYER_ID())));
-				g_WantedScore.SetState(std::clamp(LAW::GET_WANTED_SCORE(PLAYER::PLAYER_ID()), 0, 5));
 			}
 		};
 
@@ -252,7 +159,7 @@ namespace YimMenu::Features
 		{
 		public:
 			ClearLawStateCommand() :
-			    Command("clearlawstate", "Limpar recompensa e procura", "Remove a recompensa, o wanted score e a perseguição atual.")
+			    Command("clearlawstate", "Sem nível de procurado", "Remove a recompensa, zera o nível de procurado e encerra a perseguição atual da lei.")
 			{
 			}
 
@@ -262,8 +169,6 @@ namespace YimMenu::Features
 				LAW::CLEAR_BOUNTY(PLAYER::PLAYER_ID());
 				LAW::CLEAR_WANTED_SCORE(PLAYER::PLAYER_ID());
 				LAW::_SET_BOUNTY_HUNTER_PURSUIT_CLEARED();
-				g_BountyAmount.SetState(0);
-				g_WantedScore.SetState(0);
 			}
 		};
 
@@ -271,15 +176,10 @@ namespace YimMenu::Features
 		CleanPlayerCommand g_CleanPlayer;
 		RefillCoresCommand g_RefillCores;
 		RefillDeadEyeCommand g_RefillDeadEye;
-		RandomOutfitCommand g_RandomOutfit;
 		ClearTasksCommand g_ClearTasks;
 		RagdollPlayerCommand g_RagdollPlayer;
 		RemoveWeaponsCommand g_RemoveWeapons;
-		GroundPlayerCommand g_GroundPlayer;
-		ApplyBountyCommand g_ApplyBounty;
-		ApplyWantedScoreCommand g_ApplyWantedScore;
 		MaximumWantedScoreCommand g_MaximumWantedScore;
-		ReadLawStateCommand g_ReadLawState;
 		ClearLawStateCommand g_ClearLawState;
 	}
 }

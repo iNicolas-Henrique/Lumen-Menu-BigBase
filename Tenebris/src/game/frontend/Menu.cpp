@@ -1,12 +1,14 @@
 #include "Menu.hpp"
 
 #include "core/commands/Commands.hpp"
+#include "core/frontend/manager/AdvancedEditor.hpp"
 #include "core/frontend/manager/UIManager.hpp"
 #include "core/renderer/Renderer.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/ScriptMgr.hpp"
 #include "game/frontend/fonts/Fonts.hpp"
 #include "game/pointers/Pointers.hpp"
+#include "submenus/AbilityCards.hpp"
 #include "submenus/Debug.hpp"
 #include "submenus/Network.hpp"
 #include "submenus/Players.hpp"
@@ -61,7 +63,12 @@ namespace YimMenu
 	{
 		g_SettingsInstance.LoadSettings();
 
-		UIManager::AddSubmenu(std::make_shared<Submenus::Self>());
+		auto selfSubmenu = std::make_shared<Submenus::Self>();
+		// The old clothes/face/eyebrow/voice editor is intentionally no longer
+		// installed. Its source remains in the project for rollback, but the
+		// requested Self UI now exposes the ability-card editor instead.
+		Submenus::InstallAbilityCards(selfSubmenu);
+		UIManager::AddSubmenu(std::move(selfSubmenu));
 		UIManager::AddSubmenu(std::make_shared<Submenus::Teleport>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Network>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Players>());
@@ -73,7 +80,12 @@ namespace YimMenu
 		Renderer::AddRendererCallBack(
 		    [] {
 			    if (!GUI::IsOpen())
+			    {
+				    // Sem o menu sendo renderizado nao existe frame para concluir o fade;
+				    // por isso o fechamento global precisa finalizar o editor de imediato.
+				    AdvancedEditor::CloseImmediate();
 				    return;
+			    }
 
 			    static bool runtimeInfoLoaded = false;
 			    if (!runtimeInfoLoaded)
@@ -136,10 +148,10 @@ namespace YimMenu
 		ImFontConfig FontCfg{};
 		FontCfg.FontDataOwnedByAtlas = false;
 
-		const std::filesystem::path bodyFontPath = std::filesystem::path(std::getenv("WINDIR") ? std::getenv("WINDIR") : "C:\\Windows") / "Fonts" / "georgia.ttf";
-		Menu::Font::g_DefaultFont = std::filesystem::exists(bodyFontPath) ? IO.Fonts->AddFontFromFileTTF(bodyFontPath.string().c_str(), 18.0f) : nullptr;
-		if (!Menu::Font::g_DefaultFont)
-			Menu::Font::g_DefaultFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
+		// Volta a usar a fonte incorporada original do projeto em vez de Georgia.
+		// O peso visual extra e aplicado no renderer com uma segunda passagem
+		// subpixel, mantendo o desenho antigo sem depender das fontes do Windows.
+		Menu::Font::g_DefaultFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
 		Menu::Font::g_OptionsFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
 		Menu::Font::g_ChildTitleFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
 		Menu::Font::g_ChatFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 22.0f, &FontCfg);

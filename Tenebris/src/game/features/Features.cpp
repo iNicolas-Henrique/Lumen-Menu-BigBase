@@ -7,11 +7,12 @@
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/Players.hpp"
 #include "game/backend/ScriptMgr.hpp"
+#include "game/backend/Self.hpp"
 #include "game/frontend/ContextMenu.hpp"
 #include "game/frontend/GUI.hpp"
+#include "game/frontend/submenus/AbilityCards.hpp"
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Natives.hpp"
-#include "game/backend/Self.hpp"
 
 namespace YimMenu
 {
@@ -72,6 +73,7 @@ namespace YimMenu
 				if (GetForegroundWindow() == *Pointers.Hwnd && !HUD::IS_PAUSE_MENU_ACTIVE() && !GUI::IsOpen())
 					g_HotkeySystem.Update();
 				Self::Update();
+				AbilityCards::Tick();
 			}
 			ScriptMgr::Yield();
 		}
