@@ -13,7 +13,8 @@ namespace YimMenu::Submenus
 	namespace
 	{
 		constexpr int kBondingAttribute = 7; // ePedAttribute::PA_BONDING
-		constexpr int kMaxBondingLevel = 4;
+		constexpr int kMaxBondingPoints = 2450;
+		constexpr int kExpectedMaxBondingLevel = 4;
 
 		int ResolvePlayerHorse()
 		{
@@ -35,10 +36,23 @@ namespace YimMenu::Submenus
 					return;
 				}
 
-				// A native dedicada atualiza o nível de vínculo do mount; o atributo
-				// PA_BONDING mantém o rank correspondente coerente no próprio PED.
-				PED::_SET_MOUNT_BONDING_LEVEL(horse, kMaxBondingLevel);
-				ATTRIBUTE::SET_ATTRIBUTE_BASE_RANK(horse, kBondingAttribute, kMaxBondingLevel);
+				// O jogo trata PA_BONDING (atributo 7) por pontos. Primeiro colocamos
+				// os pontos no teto conhecido, depois deixamos o próprio sistema de
+				// atributos calcular o rank e sincronizamos a native de bonding.
+				ATTRIBUTE::SET_ATTRIBUTE_POINTS(horse, kBondingAttribute, kMaxBondingPoints);
+				const int bondingLevel = ATTRIBUTE::GET_ATTRIBUTE_RANK(horse, kBondingAttribute);
+				PED::_SET_MOUNT_BONDING_LEVEL(horse, bondingLevel);
+
+				if (bondingLevel < kExpectedMaxBondingLevel)
+				{
+					Notifications::Show("Tenebris",
+					    Localization::IsPortuguese()
+					        ? "Os pontos de vínculo foram maximizados, mas o jogo ainda não reportou nível 4."
+					        : "Bonding points were maximized, but the game has not reported level 4 yet.",
+					    NotificationType::Warning,
+					    3500);
+					return;
+				}
 
 				Notifications::Show("Tenebris",
 				    Localization::IsPortuguese() ? "Vínculo do cavalo maximizado para o nível 4." : "Horse bonding maximized to level 4.",
