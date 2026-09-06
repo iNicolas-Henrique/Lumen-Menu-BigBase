@@ -2,6 +2,7 @@
 #include "core/commands/Command.hpp"
 #include "core/commands/Commands.hpp"
 #include "core/commands/HotkeySystem.hpp"
+#include "core/frontend/Localization.hpp"
 
 namespace YimMenu
 {
@@ -15,18 +16,19 @@ namespace YimMenu
 		auto Command = Commands::GetCommand(m_Id);
 
 		if (!Command)
-			ImGui::Text("Unkown Command");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Comando desconhecido" : "Unknown command");
 		else
 		{
 			CommandLink* CommandHotkeyLink = &g_HotkeySystem.m_CommandHotkeys.at(Command->GetHash());
 
 			if (!CommandHotkeyLink)
 			{
-				ImGui::Text("Unkown CommandLink");
+				ImGui::Text("%s", Localization::IsPortuguese() ? "Atalho de comando desconhecido" : "Unknown command link");
 			}
 			else
 			{
-				ImGui::Button(Command->GetLabel().data());
+				const std::string commandLabel = Localization::Text(Command->GetLabel());
+				ImGui::Button(commandLabel.c_str());
 				CommandHotkeyLink->m_BeingModified = ImGui::IsItemActive();
 
 				if (CommandHotkeyLink->m_BeingModified)
@@ -40,9 +42,9 @@ namespace YimMenu
 				if (CommandHotkeyLink->m_Chain.empty())
 				{
 					if (CommandHotkeyLink->m_BeingModified)
-						ImGui::Text("Press any button...");
+						ImGui::Text("%s", Localization::IsPortuguese() ? "Pressione uma tecla..." : "Press any key...");
 					else
-						ImGui::Text("No Hotkey Assigned");
+						ImGui::Text("%s", Localization::IsPortuguese() ? "Nenhum atalho definido" : "No hotkey assigned");
 				}
 				else
 				{
@@ -62,7 +64,7 @@ namespace YimMenu
 					ImGui::PopItemWidth();
 
 					ImGui::SameLine();
-					if (ImGui::Button("Clear"))
+					if (ImGui::Button(Localization::IsPortuguese() ? "Limpar" : "Clear"))
 					{
 						CommandHotkeyLink->m_Chain.clear();
 					}
