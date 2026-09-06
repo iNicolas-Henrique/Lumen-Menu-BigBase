@@ -509,7 +509,7 @@ namespace YimMenu
 				PLAYER::_SET_DEADEYE_TAGGING_ENABLED(playerId, true);
 				paintItBlackApplied = true;
 			}
-			else if (paintItBlackApplied && activeAbility != static_cast<std::uint32_t>(AbilityType::PAINT_IT_BLACK))
+			else if (paintItBlackApplied)
 			{
 				PLAYER::_SET_DEADEYE_TAGGING_ENABLED(playerId, false);
 				paintItBlackApplied = false;
@@ -523,7 +523,7 @@ namespace YimMenu
 				PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(ePersonaAbilityFlag::PERSONA_EXIT_DEADEYE_ON_TAKING_DAMAGE, false);
 				momentFlagApplied = true;
 			}
-			else if (momentFlagApplied && activeAbility != static_cast<std::uint32_t>(AbilityType::A_MOMENT_TO_RECUPERATE))
+			else if (momentFlagApplied)
 			{
 				PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(ePersonaAbilityFlag::PERSONA_EXIT_DEADEYE_ON_TAKING_DAMAGE, true);
 				momentFlagApplied = false;
