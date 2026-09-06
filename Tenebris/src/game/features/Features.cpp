@@ -10,6 +10,7 @@
 #include "game/backend/Self.hpp"
 #include "game/frontend/ContextMenu.hpp"
 #include "game/frontend/GUI.hpp"
+#include "game/frontend/submenus/AbilityCardPower.hpp"
 #include "game/frontend/submenus/AbilityCards.hpp"
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Natives.hpp"
@@ -74,6 +75,7 @@ namespace YimMenu
 					g_HotkeySystem.Update();
 				Self::Update();
 				AbilityCards::Tick();
+				AbilityCardPower::Tick();
 			}
 			ScriptMgr::Yield();
 		}
