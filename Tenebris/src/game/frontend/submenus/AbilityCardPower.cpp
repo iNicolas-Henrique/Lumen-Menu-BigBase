@@ -72,6 +72,18 @@ namespace YimMenu
 		std::array<std::atomic<int>, 4> g_ObservedTier{{-1, -1, -1, -1}};
 		std::array<std::atomic<std::uint32_t>, 4> g_ObservedType{};
 
+		void ResetSessionState()
+		{
+			for (std::size_t slot = 0; slot < 4; ++slot)
+			{
+				g_TierOverrideEnabled[slot].store(false);
+				g_TierRestorePending[slot].store(false);
+				g_SavedGameTier[slot].store(-1);
+				g_ObservedTier[slot].store(-1);
+				g_ObservedType[slot].store(0);
+			}
+		}
+
 		const char* SlotName(std::size_t slot)
 		{
 			if (Localization::IsPortuguese())
@@ -204,8 +216,21 @@ namespace YimMenu
 	{
 		void Tick()
 		{
-			if (!g_Running || !Pointers.IsSessionStarted || !*Pointers.IsSessionStarted)
+			static bool wasInSession = false;
+			const bool inSession = g_Running && Pointers.IsSessionStarted && *Pointers.IsSessionStarted;
+			if (!inSession)
+			{
+				if (wasInSession)
+					ResetSessionState();
+				wasInSession = false;
 				return;
+			}
+
+			if (!wasInSession)
+			{
+				ResetSessionState();
+				wasInSession = true;
+			}
 
 			constexpr auto persona = ScriptGlobal(1155150);
 			if (!persona.CanAccess(true))
