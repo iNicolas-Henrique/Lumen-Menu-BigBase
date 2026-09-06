@@ -3,6 +3,7 @@
 #include "core/commands/BoolCommand.hpp"
 #include "core/commands/Commands.hpp"
 #include "core/commands/IntCommand.hpp"
+#include "core/frontend/Localization.hpp"
 #include "game/backend/AnimationDict.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/MusicDict.hpp"
@@ -503,7 +504,7 @@ namespace YimMenu::Submenus
 			ImGui::EndCombo();
 		}
 
-		if (ImGui::Button("Play Emote"))
+		if (ImGui::Button(Localization::IsPortuguese() ? "Reproduzir emote" : "Play Emote"))
 		{
 			if (*Pointers.IsSessionStarted)
 			{
@@ -525,7 +526,7 @@ namespace YimMenu::Submenus
 		}
 
 		ImGui::Separator();
-		ImGui::Text("Biblioteca de musicas");
+		ImGui::Text("%s", Localization::IsPortuguese() ? "Biblioteca de músicas" : "Music library");
 
 		static char musicDictFilterBuf[128] = {};
 		static std::string music_event;
@@ -539,7 +540,7 @@ namespace YimMenu::Submenus
 		musicBuf[sizeof(musicBuf) - 1] = '\0';
 
 		ImGui::SetNextItemWidth(250.0f);
-		ImGui::InputTextWithHint("##MusicDictFilter", "Filtrar musicas", musicDictFilterBuf, sizeof(musicDictFilterBuf));
+		ImGui::InputTextWithHint("##MusicDictFilter", Localization::IsPortuguese() ? "Filtrar músicas" : "Filter music", musicDictFilterBuf, sizeof(musicDictFilterBuf));
 		std::string musicDictFilterStr = musicDictFilterBuf;
 
 		static std::vector<std::string> filteredMusicDict;
@@ -570,7 +571,7 @@ namespace YimMenu::Submenus
 			}
 		}
 
-		std::string musicComboPreviewValue = music_event.empty() ? "Selecionar musica" : MusicDict::GetDisplayName(music_event);
+		std::string musicComboPreviewValue = music_event.empty() ? (Localization::IsPortuguese() ? "Selecionar música" : "Select music") : MusicDict::GetDisplayName(music_event);
 
 		if (ImGui::BeginCombo("##MusicDictionaryCombo", musicComboPreviewValue.c_str()))
 		{
@@ -591,7 +592,7 @@ namespace YimMenu::Submenus
 			}
 			ImGui::EndCombo();
 		}
-		if (ImGui::InputText("Evento da musica", musicBuf, sizeof(musicBuf), ImGuiInputTextFlags_AutoSelectAll))
+		if (ImGui::InputText(Localization::IsPortuguese() ? "Evento da música" : "Music event", musicBuf, sizeof(musicBuf), ImGuiInputTextFlags_AutoSelectAll))
 		{
 			music_event = musicBuf;
 		}
@@ -601,8 +602,8 @@ namespace YimMenu::Submenus
 			musicBuf[sizeof(musicBuf) - 1] = '\0';
 		}
 
-		ImGui::Text("Reproducao");
-		ImGui::Checkbox("Repetir musica", &loopMusic);
+		ImGui::Text("%s", Localization::IsPortuguese() ? "Reprodução" : "Playback");
+		ImGui::Checkbox(Localization::IsPortuguese() ? "Repetir música" : "Loop music", &loopMusic);
 		if (!isMusicLooping && loopMusic && !music_event.empty())
 		{
 			isMusicLooping = true;
@@ -680,11 +681,11 @@ namespace YimMenu::Submenus
 		}
 		if (!favoriteMusics.empty())
 		{
-			ImGui::Text("Musicas favoritas:");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Músicas favoritas:" : "Favorite music:");
 			static int favMusicIndex = -1;
 			std::vector<std::string> favMusicLabels(favoriteMusics.begin(), favoriteMusics.end());
 			const std::string preview =
-			    (favMusicIndex >= 0 && favMusicIndex < (int)favMusicLabels.size()) ? MusicDict::GetDisplayName(favMusicLabels[favMusicIndex]) : "Selecionar favorita";
+			    (favMusicIndex >= 0 && favMusicIndex < (int)favMusicLabels.size()) ? MusicDict::GetDisplayName(favMusicLabels[favMusicIndex]) : (Localization::IsPortuguese() ? "Selecionar favorita" : "Select favorite");
 			if (ImGui::BeginCombo("##MusicFavoritesCombo", preview.c_str()))
 			{
 				for (int i = 0; i < (int)favMusicLabels.size(); ++i)
@@ -722,8 +723,8 @@ namespace YimMenu::Submenus
 
 		if (!lastPlayedMusics.empty())
 		{
-			ImGui::Text("Musicas recentes:");
-			if (ImGui::BeginCombo("##RecentMusics", "Selecionar musica"))
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Músicas recentes:" : "Recent music:");
+			if (ImGui::BeginCombo("##RecentMusics", Localization::IsPortuguese() ? "Selecionar música" : "Select music"))
 			{
 				for (const auto& recentMusic : lastPlayedMusics)
 				{
@@ -737,7 +738,7 @@ namespace YimMenu::Submenus
 				}
 				ImGui::EndCombo();
 			}
-			if (ImGui::Button("Limpar historico"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Limpar histórico" : "Clear history"))
 			{
 				lastPlayedMusics.clear();
 				SaveMusicHistory();
@@ -756,9 +757,9 @@ namespace YimMenu::Submenus
 		LoadMusicHistory();
 
 		auto main = std::make_shared<Category>("Principal");
-		auto globalsGroup = std::make_shared<Group>("Globals");
-		auto movementGroup = std::make_shared<Group>("Movement");
-		auto toolsGroup = std::make_shared<Group>("Tools");
+		auto globalsGroup = std::make_shared<Group>("Gerais");
+		auto movementGroup = std::make_shared<Group>("Movimento");
+		auto toolsGroup = std::make_shared<Group>("Ferramentas");
 
 		globalsGroup->AddItem(std::make_shared<BoolCommandItem>("godmode"_J));
 		globalsGroup->AddItem(std::make_shared<BoolCommandItem>("neverwanted"_J));
@@ -793,7 +794,7 @@ namespace YimMenu::Submenus
 
 		static float playerScale = 1.0f;
 		toolsGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			ImGui::Text("Player Scale");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Escala do personagem" : "Player Scale");
 			ImGui::SetNextItemWidth(100.0f);
 			if (ImGui::InputFloat("##PlayerScale", &playerScale))
 			{
@@ -835,7 +836,7 @@ namespace YimMenu::Submenus
 		AddCategory(std::move(nativeUtilities));
 
 		auto weapons = std::make_shared<Category>("Armas");
-		auto weaponsGlobalsGroup = std::make_shared<Group>("Globals");
+		auto weaponsGlobalsGroup = std::make_shared<Group>("Gerais");
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("infiniteammo"_J));
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("infiniteclip"_J));
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("nospread"_J));
@@ -843,13 +844,13 @@ namespace YimMenu::Submenus
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("keepgunsclean"_J));
 
 		weaponsGlobalsGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			if (ImGui::Button("Give All Weapons"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Entregar todas as armas" : "Give All Weapons"))
 			{
 				FiberPool::Push([] {
 					YimMenu::Features::TriggerGiveAllWeapons();
 				});
 			}
-			if (ImGui::Button("Give All Ammo"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Entregar toda a munição" : "Give All Ammo"))
 			{
 				FiberPool::Push([] {
 					YimMenu::Features::TriggerGiveAllAmmo();
@@ -912,7 +913,7 @@ namespace YimMenu::Submenus
 		AddCategory(std::move(weapons));
 
 		auto horse = std::make_shared<Category>("Cavalo");
-		auto horseGlobalsGroup = std::make_shared<Group>("Globals");
+		auto horseGlobalsGroup = std::make_shared<Group>("Gerais");
 		horseGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("horsegodmode"_J));
 		horseGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("horsenoragdoll"_J));
 		horseGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("horsesuperrun"_J));
@@ -939,7 +940,7 @@ namespace YimMenu::Submenus
 		AddCategory(std::move(horse));
 
 		auto vehicle = std::make_shared<Category>("Veiculo");
-		auto vehicleGlobalsGroup = std::make_shared<Group>("Globals");
+		auto vehicleGlobalsGroup = std::make_shared<Group>("Gerais");
 		auto vehicleFunGroup = std::make_shared<Group>("Fun");
 		vehicleGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("vehiclegodmode"_J));
 		vehicleGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("vehiclenodetach"_J));
@@ -956,7 +957,7 @@ namespace YimMenu::Submenus
 		auto animations = std::make_shared<Category>("Animacoes");
 		animations->AddItem(std::make_shared<ImGuiItem>([] {
 			YimMenu::Submenus::RenderAnimationsCategory();
-		}, "Animacoes e musicas", "Seleciona animacoes, emotes e musicas para reproduzir no personagem."));
+		}, "Animações e músicas", "Seleciona animações, emotes e músicas para reproduzir no personagem."));
 		AddCategory(std::move(animations));
 	}
 }

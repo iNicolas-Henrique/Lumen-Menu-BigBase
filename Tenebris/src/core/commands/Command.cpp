@@ -101,6 +101,7 @@ namespace YimMenu
 			if (HasAny(key, {"removeallweapons", "remove all weapons"})) return "Remove todas as armas carregadas pelo seu personagem.";
 			if (HasAny(key, {"maximumhostility", "maximum hostility"})) return "Coloca imediatamente a perseguição da lei no nível máximo.";
 			if (HasAny(key, {"clearlawstate", "clear law"})) return "Remove a recompensa e encerra a perseguição atual da lei.";
+			if (HasAny(key, {"unlimiteditems", "unlimited items"})) return "Impede o consumo de itens ao bloquear a mensagem de uso enviada ao servidor enquanto a opção estiver ativada.";
 			if (HasAny(key, {"godmode", "god mode"})) return "Impede que seu personagem receba dano enquanto a opção estiver ativada.";
 			if (HasAny(key, {"noragdoll", "no ragdoll"})) return "Impede quedas e efeitos de ragdoll no seu personagem.";
 			if (HasAny(key, {"antihogtie", "anti hogtie"})) return "Impede que seu personagem seja amarrado.";
@@ -161,12 +162,14 @@ namespace YimMenu
 			if (HasAny(key, {"explodeall", "explode player", "kill player", "beatdown", "beat down", "poodle attack", "remote bolas", "spank", "cage player", "delete horse", "delete vehicle"})) return "Executa a ação indicada pelo nome da opção no jogador selecionado.";
 			if (HasAny(key, {"spoof", "hidegod", "hide god", "hidespectate", "hide spectate"})) return "Altera o dado ou comportamento indicado pelo nome da opção durante a sessão.";
 			if (LooksPortuguese(description)) return FixPortuguese(std::string(description));
-			return std::format("Ativa, desativa ou executa “{}” conforme o tipo da opção mostrado no menu.", FixPortuguese(std::string(label)));
+			return FixPortuguese(std::string(description));
 		}
 
 		std::string BuildEnglishDescription(std::string_view name, std::string_view label, std::string_view description)
 		{
 			const std::string key = ToLower(std::string(name) + " " + std::string(label));
+			if (HasAny(key, {"unlimiteditems"})) return "Prevents item consumption by blocking the item-use message sent to the server while enabled.";
+			if (HasAny(key, {"completedailies"})) return "Completes the available daily challenges using their corresponding stats.";
 			if (!LooksPortuguese(description) && !description.empty()) return std::string(description);
 			if (HasAny(key, {"maximumhostility"})) return "Immediately sets law pursuit to the maximum wanted level.";
 			if (HasAny(key, {"clearlawstate"})) return "Clears the bounty and ends the current law pursuit.";
@@ -176,7 +179,7 @@ namespace YimMenu
 			if (HasAny(key, {"refilldeadeye"})) return "Refills the Dead Eye meter.";
 			if (HasAny(key, {"cleartasks"})) return "Stops the player's current animation, scenario or task.";
 			if (HasAny(key, {"removeallweapons"})) return "Removes all weapons currently carried by the player.";
-			return std::format("Controls the '{}' option.", std::string(label));
+			return std::string(description);
 		}
 	}
 

@@ -32,6 +32,6 @@ namespace YimMenu::Features
 
 	static CompleteDailies _CompleteDailies{
 	    "completedailies",
-	    "Complete Daily Challenges",
-	    "Applies the configured progress to all daily challenge statistics."};
+	    "Concluir desafios diários",
+	    "Conclui os desafios diários disponíveis usando os stats correspondentes."};
 }

@@ -144,9 +144,11 @@ namespace YimMenu
 		}};
 
 		std::array<std::atomic<std::uint32_t>, 4> g_CurrentAbility{};
+		std::array<std::atomic<std::uint32_t>, 4> g_GameAbility{};
 		std::array<std::atomic<int>, 4> g_CurrentTier{{-1, -1, -1, -1}};
 		std::array<std::atomic<std::uint32_t>, 4> g_OverrideAbility{};
 		std::array<std::atomic_bool, 4> g_OverrideEnabled{};
+		std::array<std::atomic_bool, 4> g_RestorePending{};
 
 		std::atomic_bool g_PaintItBlackAutoTag{false};
 		std::atomic_int g_PaintItBlackTargetMode{7}; // 6 enemies, 7 all, 8 animals
@@ -212,6 +214,8 @@ namespace YimMenu
 			const auto* card = FindCard(hash);
 			if (!card || !IsCompatible(slot, *card))
 				return;
+			if (!g_OverrideEnabled[slot].load())
+				g_GameAbility[slot].store(g_CurrentAbility[slot].load());
 			g_OverrideAbility[slot].store(hash);
 			g_OverrideEnabled[slot].store(true);
 			g_CurrentAbility[slot].store(hash);
@@ -221,6 +225,7 @@ namespace YimMenu
 		{
 			if (slot >= g_OverrideEnabled.size())
 				return;
+			g_RestorePending[slot].store(true);
 			g_OverrideEnabled[slot].store(false);
 		}
 
@@ -304,8 +309,8 @@ namespace YimMenu
 			}
 
 			ImGui::TextDisabled("%s", Localization::IsPortuguese()
-			    ? "Nenhum parâmetro adicional foi exposto sem um mapeamento interno verificável."
-			    : "No extra parameter is exposed without a verifiable internal mapping.");
+			    ? "Nenhum parâmetro adicional foi mapeado com segurança."
+			    : "No additional parameter has been safely mapped.");
 		}
 
 		class AbilitySlotItem final : public UIItem
@@ -475,11 +480,19 @@ namespace YimMenu
 			{
 				auto& equipped = data->Entries[playerId].Abilities[static_cast<int>(slot)];
 				g_CurrentTier[slot].store(equipped.Tier);
-				if (g_OverrideEnabled[slot].load())
+				if (g_RestorePending[slot].exchange(false))
+				{
+					equipped.Type = static_cast<AbilityType>(g_GameAbility[slot].load());
+				}
+				else if (g_OverrideEnabled[slot].load())
 				{
 					const auto overrideHash = g_OverrideAbility[slot].load();
 					if (FindCard(overrideHash))
 						equipped.Type = static_cast<AbilityType>(overrideHash);
+				}
+				else
+				{
+					g_GameAbility[slot].store(static_cast<std::uint32_t>(equipped.Type));
 				}
 				g_CurrentAbility[slot].store(static_cast<std::uint32_t>(equipped.Type));
 			}

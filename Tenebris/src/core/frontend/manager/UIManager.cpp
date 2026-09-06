@@ -113,9 +113,7 @@ namespace YimMenu
 		{
 			if (!description.empty() && description != "Empty" && description != "Abre os controles desta secao.")
 				return Localization::Text(description);
-			if (Localization::IsPortuguese())
-				return std::format("Executa ou ajusta '{}', conforme a função selecionada.", Localization::Text(label));
-			return std::format("Runs or adjusts '{}' according to the selected function.", Localization::Text(label));
+			return {};
 		}
 	}
 
@@ -425,7 +423,7 @@ namespace YimMenu
 			drawList->AddLine(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y), C(kLightGreen), 1.0f);
 			const std::string runtime = Localization::IsPortuguese() ? std::format("Jogo {}  |  Tenebris v{}", m_GameBuild, m_ModVersion) : std::format("Game {}  |  Tenebris v{}", m_GameBuild, m_ModVersion);
 			DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 4.0f * layout.Scale), C(IM_COL32(190, 200, 175, 255)), runtime, layout.Scale * 0.82f);
-			DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 21.0f * layout.Scale), C(IM_COL32(155, 165, 145, 255)), Localization::Text("Setas: navegar  |  Enter: selecionar  |  Backspace: Voltar"), layout.Scale * 0.72f);
+			DrawText(drawList, ImVec2(kMenuX + 10.0f, y + 21.0f * layout.Scale), C(IM_COL32(155, 165, 145, 255)), Localization::Text("Setas: navegar | Enter: selecionar | Backspace: Voltar"), layout.Scale * 0.72f);
 			y += kFooterHeight;
 
 			if (!description.empty())
