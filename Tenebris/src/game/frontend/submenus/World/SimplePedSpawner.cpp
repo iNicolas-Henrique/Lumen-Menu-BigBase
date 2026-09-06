@@ -102,7 +102,7 @@ namespace YimMenu::Submenus
 
 			// Para os demais humanos, remove prefixos técnicos e deixa o papel/nome legível.
 			std::string_view clean = model;
-			static constexpr std::array prefixes = {
+			static constexpr std::array<std::string_view, 19> prefixes = {
 			    "CS_", "U_M_M_", "U_F_M_", "U_M_O_", "U_F_O_", "U_M_Y_", "U_F_Y_",
 			    "A_M_M_", "A_F_M_", "A_M_O_", "A_F_O_", "A_M_Y_", "A_F_Y_",
 			    "S_M_M_", "S_F_M_", "S_M_Y_", "S_F_Y_", "MP_U_M_M_", "MP_U_F_M_"};
@@ -130,6 +130,7 @@ namespace YimMenu::Submenus
 				return;
 
 			const Hash knife = Joaat("WEAPON_MELEE_KNIFE");
+			WEAPON::REMOVE_ALL_PED_WEAPONS(pedHandle, true, true);
 			WEAPON::GIVE_WEAPON_TO_PED(pedHandle, knife, 1, true, true, 0, false, 0.5f, 1.0f, 1.0f, false, 0, false);
 			WEAPON::SET_CURRENT_PED_WEAPON(pedHandle, knife, true, 0, false, false);
 
