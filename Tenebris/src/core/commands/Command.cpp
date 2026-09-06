@@ -99,8 +99,8 @@ namespace YimMenu
 			if (HasAny(key, {"cleartasks", "clear tasks"}) && !Has(key, "block")) return "Interrompe imediatamente a animação, o cenário ou a tarefa atual.";
 			if (HasAny(key, {"ragdollplayer", "ragdoll player"})) return "Faz o próprio personagem entrar em ragdoll por alguns segundos.";
 			if (HasAny(key, {"removeallweapons", "remove all weapons"})) return "Remove todas as armas carregadas pelo seu personagem.";
-			if (HasAny(key, {"maximumhostility", "maximum hostility"})) return "Coloca a procura da lei diretamente no nível 5 e chama os agentes da lei.";
-			if (HasAny(key, {"clearlawstate", "clear law"})) return "Remove a recompensa e encerra a procura atual da lei.";
+			if (HasAny(key, {"maximumhostility", "maximum hostility"})) return "Coloca imediatamente a perseguição da lei no nível máximo.";
+			if (HasAny(key, {"clearlawstate", "clear law"})) return "Remove a recompensa e encerra a perseguição atual da lei.";
 			if (HasAny(key, {"godmode", "god mode"})) return "Impede que seu personagem receba dano enquanto a opção estiver ativada.";
 			if (HasAny(key, {"noragdoll", "no ragdoll"})) return "Impede quedas e efeitos de ragdoll no seu personagem.";
 			if (HasAny(key, {"antihogtie", "anti hogtie"})) return "Impede que seu personagem seja amarrado.";
@@ -168,7 +168,7 @@ namespace YimMenu
 		{
 			const std::string key = ToLower(std::string(name) + " " + std::string(label));
 			if (!LooksPortuguese(description) && !description.empty()) return std::string(description);
-			if (HasAny(key, {"maximumhostility"})) return "Sets the law wanted level directly to 5 and calls law enforcement immediately.";
+			if (HasAny(key, {"maximumhostility"})) return "Immediately sets law pursuit to the maximum wanted level.";
 			if (HasAny(key, {"clearlawstate"})) return "Clears the bounty and ends the current law pursuit.";
 			if (HasAny(key, {"restoreplayer"})) return "Revives the player and restores health and stamina.";
 			if (HasAny(key, {"cleanplayer"})) return "Removes visible blood and dirt from the player.";

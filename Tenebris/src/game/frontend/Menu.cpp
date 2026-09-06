@@ -64,9 +64,8 @@ namespace YimMenu
 		g_SettingsInstance.LoadSettings();
 
 		auto selfSubmenu = std::make_shared<Submenus::Self>();
-		// The old clothes/face/eyebrow/voice editor is intentionally no longer
-		// installed. Its source remains in the project for rollback, but the
-		// requested Self UI now exposes the ability-card editor instead.
+		// The old clothes/face/eyebrow/voice editor is intentionally not installed;
+		// the Self UI exposes the ability-card editor instead.
 		Submenus::InstallAbilityCards(selfSubmenu);
 		UIManager::AddSubmenu(std::move(selfSubmenu));
 		UIManager::AddSubmenu(std::make_shared<Submenus::Teleport>());

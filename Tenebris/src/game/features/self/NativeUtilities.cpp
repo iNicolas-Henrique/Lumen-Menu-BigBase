@@ -143,7 +143,7 @@ namespace YimMenu::Features
 		{
 		public:
 			MaximumWantedScoreCommand() :
-			    Command("maximumhostility", "Nível máximo de procurado", "Coloca a procura da lei diretamente no nível 5 e faz a polícia perseguir você imediatamente.")
+			    Command("maximumhostility", "Nível máximo de procurado", "Coloca imediatamente a perseguição da lei no nível máximo.")
 			{
 			}
 
@@ -159,7 +159,7 @@ namespace YimMenu::Features
 		{
 		public:
 			ClearLawStateCommand() :
-			    Command("clearlawstate", "Sem nível de procurado", "Remove a recompensa, zera o nível de procurado e encerra a perseguição atual da lei.")
+			    Command("clearlawstate", "Sem nível de procurado", "Remove a recompensa e encerra a perseguição atual da lei.")
 			{
 			}
 
