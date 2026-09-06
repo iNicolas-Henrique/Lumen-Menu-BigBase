@@ -45,6 +45,7 @@ namespace YimMenu
 		std::string_view GetMenuLabel() const override;
 		std::string_view GetMenuDescription() const override;
 		void HandleMenuAction(MenuAction action) override;
+		bool IsVisible() const override;
 
 	private:
 		Command* m_Command;
@@ -89,6 +90,7 @@ namespace YimMenu
 		std::string GetMenuValue() const override;
 		std::string_view GetMenuDescription() const override;
 		void HandleMenuAction(MenuAction action) override;
+		bool IsVisible() const override;
 		bool RequiresImGuiEditor() const override
 		{
 			return true;

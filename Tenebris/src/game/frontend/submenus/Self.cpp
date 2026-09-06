@@ -3,6 +3,7 @@
 #include "core/commands/BoolCommand.hpp"
 #include "core/commands/Commands.hpp"
 #include "core/commands/IntCommand.hpp"
+#include "core/frontend/Localization.hpp"
 #include "game/backend/AnimationDict.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/MusicDict.hpp"
@@ -202,7 +203,9 @@ namespace YimMenu::Submenus
 		ImGui::SameLine();
 		ImGui::TextDisabled("(?)");
 		if (ImGui::IsItemHovered())
-			ImGui::SetTooltip("Toggle to enable/disable Animation Dictionary. When enabled, AniDict.json will be available for dictionary/animation selection and completion.");
+			ImGui::SetTooltip("%s", Localization::IsPortuguese()
+			        ? "Ativa ou desativa o dicionário de animações. Quando ativado, o AniDict.json fica disponível para selecionar e completar dicionários/animações."
+			        : "Toggle the Animation Dictionary. When enabled, AniDict.json is available for dictionary/animation selection and completion.");
 		ImGui::Separator();
 
 		std::strncpy(dictBuf, dict.c_str(), sizeof(dictBuf));
@@ -216,9 +219,9 @@ namespace YimMenu::Submenus
 		{
 			auto& allDicts = YimMenu::AnimationDict::GetAllAnimations();
 
-			ImGui::Text("Dictionary");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Dicionário" : "Dictionary");
 			ImGui::SetNextItemWidth(250.0f);
-			ImGui::InputTextWithHint("##DictionaryFilter", "Filter Dictionaries", dictFilterBuf, sizeof(dictFilterBuf));
+			ImGui::InputTextWithHint("##DictionaryFilter", Localization::IsPortuguese() ? "Filtrar dicionários" : "Filter Dictionaries", dictFilterBuf, sizeof(dictFilterBuf));
 			dictFilterStr = dictFilterBuf;
 
 			std::vector<std::string> filteredDicts;
@@ -245,7 +248,7 @@ namespace YimMenu::Submenus
 			}
 
 			bool dictDropdownJustSelected = false;
-			std::string dictComboPreviewValue = dict.empty() ? "Select Dictionary" : dict;
+			std::string dictComboPreviewValue = dict.empty() ? (Localization::IsPortuguese() ? "Selecionar dicionário" : "Select Dictionary") : dict;
 			if (ImGui::BeginCombo("##DictionaryCombo", dictComboPreviewValue.c_str()))
 			{
 				for (const auto& dictName : filteredDicts)
@@ -274,7 +277,7 @@ namespace YimMenu::Submenus
 				dictBuf[sizeof(dictBuf) - 1] = '\0';
 			}
 
-			ImGui::Text("Animation");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Animação" : "Animation");
 			ImGui::SetNextItemWidth(250.0f);
 			std::vector<std::string> matchingAnims;
 			if (!dict.empty() && allDicts.contains(dict))
@@ -283,7 +286,7 @@ namespace YimMenu::Submenus
 			}
 
 			bool animDropdownJustSelected = false;
-			std::string animComboPreviewValue = anim.empty() ? "Select Animation" : anim;
+			std::string animComboPreviewValue = anim.empty() ? (Localization::IsPortuguese() ? "Selecionar animação" : "Select Animation") : anim;
 			if (ImGui::BeginCombo("##AnimationCombo", animComboPreviewValue.c_str()))
 			{
 				for (const auto& animName : matchingAnims)
@@ -313,12 +316,12 @@ namespace YimMenu::Submenus
 		}
 		else
 		{
-			ImGui::Text("Dictionary");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Dicionário" : "Dictionary");
 			ImGui::SetNextItemWidth(250.0f);
 			ImGui::InputText("##DictionaryInput", dictBuf, sizeof(dictBuf), ImGuiInputTextFlags_AutoSelectAll);
 			dict = dictBuf;
 
-			ImGui::Text("Animation");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Animação" : "Animation");
 			ImGui::SetNextItemWidth(250.0f);
 			ImGui::InputText("##AnimationInput", animBuf, sizeof(animBuf), ImGuiInputTextFlags_AutoSelectAll);
 			anim = animBuf;
@@ -331,7 +334,7 @@ namespace YimMenu::Submenus
 		{
 			if (!isFav)
 			{
-				if (ImGui::Button("Mark Favorite"))
+				if (ImGui::Button(Localization::IsPortuguese() ? "Marcar como favorita" : "Mark Favorite"))
 				{
 					favoriteAnimations.insert(p);
 					SaveFavoriteAnimations();
@@ -340,14 +343,14 @@ namespace YimMenu::Submenus
 			}
 			else
 			{
-				if (ImGui::Button("Unmark Favorite"))
+				if (ImGui::Button(Localization::IsPortuguese() ? "Remover dos favoritos" : "Unmark Favorite"))
 				{
 					favoriteAnimations.erase(p);
 					SaveFavoriteAnimations();
 				}
 				ImGui::SameLine();
 			}
-			if (ImGui::Button("Clear Favorite List"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Limpar favoritos" : "Clear Favorite List"))
 			{
 				favoriteAnimations.clear();
 				SaveFavoriteAnimations();
@@ -355,13 +358,13 @@ namespace YimMenu::Submenus
 		}
 		if (!favoriteAnimations.empty())
 		{
-			ImGui::Text("Favorite Animations:");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Animações favoritas:" : "Favorite Animations:");
 			static int favAnimIndex = -1;
 			std::vector<std::pair<std::string, std::string>> favVec(favoriteAnimations.begin(), favoriteAnimations.end());
 			std::vector<std::string> favLabels;
 			for (const auto& fav : favVec)
 				favLabels.push_back(fav.first + " / " + fav.second);
-			const char* preview = (favAnimIndex >= 0 && favAnimIndex < (int)favLabels.size()) ? favLabels[favAnimIndex].c_str() : "Select Favorite";
+			const char* preview = (favAnimIndex >= 0 && favAnimIndex < (int)favLabels.size()) ? favLabels[favAnimIndex].c_str() : (Localization::IsPortuguese() ? "Selecionar favorita" : "Select Favorite");
 			if (ImGui::BeginCombo("##AnimFavoritesCombo", preview))
 			{
 				for (int i = 0; i < (int)favVec.size(); ++i)
@@ -380,7 +383,8 @@ namespace YimMenu::Submenus
 						animBuf[sizeof(animBuf) - 1] = '\0';
 					}
 					ImGui::SameLine();
-					if (ImGui::SmallButton(("Remove##fav" + std::to_string(i)).c_str()))
+					const std::string removeFavoriteLabel = std::string(Localization::IsPortuguese() ? "Remover##fav" : "Remove##fav") + std::to_string(i);
+					if (ImGui::SmallButton(removeFavoriteLabel.c_str()))
 					{
 						favoriteAnimations.erase(fav);
 						SaveFavoriteAnimations();
@@ -397,8 +401,8 @@ namespace YimMenu::Submenus
 
 		if (!lastPlayedAnimations.empty())
 		{
-			ImGui::Text("Recent Animations:");
-			if (ImGui::BeginCombo("##RecentAnims", "Select Animation"))
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Animações recentes:" : "Recent Animations:");
+			if (ImGui::BeginCombo("##RecentAnims", Localization::IsPortuguese() ? "Selecionar animação" : "Select Animation"))
 			{
 				for (const auto& [recentDict, recentAnim] : lastPlayedAnimations)
 				{
@@ -415,7 +419,7 @@ namespace YimMenu::Submenus
 				}
 				ImGui::EndCombo();
 			}
-			if (ImGui::Button("Clear Animation History"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Limpar histórico de animações" : "Clear Animation History"))
 			{
 				lastPlayedAnimations.clear();
 				SaveAnimationHistory();
@@ -424,7 +428,7 @@ namespace YimMenu::Submenus
 
 		ImGui::Spacing();
 
-		if (ImGui::Button("Play Animation"))
+		if (ImGui::Button(Localization::IsPortuguese() ? "Reproduzir animação" : "Play Animation"))
 		{
 			auto pair = std::make_pair(dict, anim);
 			if (!dict.empty() && !anim.empty())
@@ -455,7 +459,7 @@ namespace YimMenu::Submenus
 			}
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Stop Animation"))
+		if (ImGui::Button(Localization::IsPortuguese() ? "Parar animação" : "Stop Animation"))
 		{
 			FiberPool::Push([=] {
 				TASK::CLEAR_PED_TASKS(YimMenu::Self::GetPed().GetHandle(), true, false);
@@ -468,7 +472,7 @@ namespace YimMenu::Submenus
 
 		ImGui::Separator();
 
-		ImGui::Text("Emote Category");
+		ImGui::Text("%s", Localization::IsPortuguese() ? "Categoria de emote" : "Emote Category");
 		if (ImGui::BeginCombo("##Emote Category", Emote::emoteCategories[Emote::selectedEmoteCategoryIndex]))
 		{
 			for (int i = 0; i < Emote::numCategories; i++)
@@ -503,7 +507,7 @@ namespace YimMenu::Submenus
 			ImGui::EndCombo();
 		}
 
-		if (ImGui::Button("Play Emote"))
+		if (ImGui::Button(Localization::IsPortuguese() ? "Reproduzir emote" : "Play Emote"))
 		{
 			if (*Pointers.IsSessionStarted)
 			{
@@ -525,7 +529,7 @@ namespace YimMenu::Submenus
 		}
 
 		ImGui::Separator();
-		ImGui::Text("Biblioteca de musicas");
+		ImGui::Text("%s", Localization::IsPortuguese() ? "Biblioteca de músicas" : "Music library");
 
 		static char musicDictFilterBuf[128] = {};
 		static std::string music_event;
@@ -539,7 +543,7 @@ namespace YimMenu::Submenus
 		musicBuf[sizeof(musicBuf) - 1] = '\0';
 
 		ImGui::SetNextItemWidth(250.0f);
-		ImGui::InputTextWithHint("##MusicDictFilter", "Filtrar musicas", musicDictFilterBuf, sizeof(musicDictFilterBuf));
+		ImGui::InputTextWithHint("##MusicDictFilter", Localization::IsPortuguese() ? "Filtrar músicas" : "Filter music", musicDictFilterBuf, sizeof(musicDictFilterBuf));
 		std::string musicDictFilterStr = musicDictFilterBuf;
 
 		static std::vector<std::string> filteredMusicDict;
@@ -570,7 +574,7 @@ namespace YimMenu::Submenus
 			}
 		}
 
-		std::string musicComboPreviewValue = music_event.empty() ? "Selecionar musica" : MusicDict::GetDisplayName(music_event);
+		std::string musicComboPreviewValue = music_event.empty() ? (Localization::IsPortuguese() ? "Selecionar música" : "Select music") : MusicDict::GetDisplayName(music_event);
 
 		if (ImGui::BeginCombo("##MusicDictionaryCombo", musicComboPreviewValue.c_str()))
 		{
@@ -591,7 +595,7 @@ namespace YimMenu::Submenus
 			}
 			ImGui::EndCombo();
 		}
-		if (ImGui::InputText("Evento da musica", musicBuf, sizeof(musicBuf), ImGuiInputTextFlags_AutoSelectAll))
+		if (ImGui::InputText(Localization::IsPortuguese() ? "Evento da música" : "Music event", musicBuf, sizeof(musicBuf), ImGuiInputTextFlags_AutoSelectAll))
 		{
 			music_event = musicBuf;
 		}
@@ -601,8 +605,8 @@ namespace YimMenu::Submenus
 			musicBuf[sizeof(musicBuf) - 1] = '\0';
 		}
 
-		ImGui::Text("Reproducao");
-		ImGui::Checkbox("Repetir musica", &loopMusic);
+		ImGui::Text("%s", Localization::IsPortuguese() ? "Reprodução" : "Playback");
+		ImGui::Checkbox(Localization::IsPortuguese() ? "Repetir música" : "Loop music", &loopMusic);
 		if (!isMusicLooping && loopMusic && !music_event.empty())
 		{
 			isMusicLooping = true;
@@ -617,7 +621,7 @@ namespace YimMenu::Submenus
 			isMusicLooping = false;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Tocar"))
+		if (ImGui::Button(Localization::IsPortuguese() ? "Tocar" : "Play"))
 		{
 			if (!music_event.empty())
 			{
@@ -635,7 +639,7 @@ namespace YimMenu::Submenus
 			}
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Parar"))
+		if (ImGui::Button(Localization::IsPortuguese() ? "Parar" : "Stop"))
 		{
 			loopMusic = false;
 			isMusicLooping = false;
@@ -650,7 +654,7 @@ namespace YimMenu::Submenus
 		{
 			if (!musicIsFav)
 			{
-				if (ImGui::Button("Adicionar aos favoritos"))
+				if (ImGui::Button(Localization::IsPortuguese() ? "Adicionar aos favoritos" : "Add to favorites"))
 				{
 					favoriteMusics.insert(music_event);
 					SaveFavoriteMusics();
@@ -659,7 +663,7 @@ namespace YimMenu::Submenus
 			}
 			else
 			{
-				if (ImGui::Button("Remover dos favoritos"))
+				if (ImGui::Button(Localization::IsPortuguese() ? "Remover dos favoritos" : "Remove from favorites"))
 				{
 					favoriteMusics.erase(music_event);
 					SaveFavoriteMusics();
@@ -670,7 +674,7 @@ namespace YimMenu::Submenus
 				}
 				ImGui::SameLine();
 			}
-			if (ImGui::Button("Limpar favoritos"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Limpar favoritos" : "Clear favorites"))
 			{
 				favoriteMusics.clear();
 				SaveFavoriteMusics();
@@ -680,11 +684,11 @@ namespace YimMenu::Submenus
 		}
 		if (!favoriteMusics.empty())
 		{
-			ImGui::Text("Musicas favoritas:");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Músicas favoritas:" : "Favorite music:");
 			static int favMusicIndex = -1;
 			std::vector<std::string> favMusicLabels(favoriteMusics.begin(), favoriteMusics.end());
 			const std::string preview =
-			    (favMusicIndex >= 0 && favMusicIndex < (int)favMusicLabels.size()) ? MusicDict::GetDisplayName(favMusicLabels[favMusicIndex]) : "Selecionar favorita";
+			    (favMusicIndex >= 0 && favMusicIndex < (int)favMusicLabels.size()) ? MusicDict::GetDisplayName(favMusicLabels[favMusicIndex]) : (Localization::IsPortuguese() ? "Selecionar favorita" : "Select favorite");
 			if (ImGui::BeginCombo("##MusicFavoritesCombo", preview.c_str()))
 			{
 				for (int i = 0; i < (int)favMusicLabels.size(); ++i)
@@ -701,7 +705,8 @@ namespace YimMenu::Submenus
 						musicBuf[sizeof(musicBuf) - 1] = '\0';
 					}
 					ImGui::SameLine();
-					if (ImGui::SmallButton(("Remove##favmusic" + std::to_string(i)).c_str()))
+					const std::string removeMusicLabel = std::string(Localization::IsPortuguese() ? "Remover##favmusic" : "Remove##favmusic") + std::to_string(i);
+					if (ImGui::SmallButton(removeMusicLabel.c_str()))
 					{
 						favoriteMusics.erase(fav);
 						SaveFavoriteMusics();
@@ -722,8 +727,8 @@ namespace YimMenu::Submenus
 
 		if (!lastPlayedMusics.empty())
 		{
-			ImGui::Text("Musicas recentes:");
-			if (ImGui::BeginCombo("##RecentMusics", "Selecionar musica"))
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Músicas recentes:" : "Recent music:");
+			if (ImGui::BeginCombo("##RecentMusics", Localization::IsPortuguese() ? "Selecionar música" : "Select music"))
 			{
 				for (const auto& recentMusic : lastPlayedMusics)
 				{
@@ -737,7 +742,7 @@ namespace YimMenu::Submenus
 				}
 				ImGui::EndCombo();
 			}
-			if (ImGui::Button("Limpar historico"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Limpar histórico" : "Clear history"))
 			{
 				lastPlayedMusics.clear();
 				SaveMusicHistory();
@@ -756,9 +761,9 @@ namespace YimMenu::Submenus
 		LoadMusicHistory();
 
 		auto main = std::make_shared<Category>("Principal");
-		auto globalsGroup = std::make_shared<Group>("Globals");
-		auto movementGroup = std::make_shared<Group>("Movement");
-		auto toolsGroup = std::make_shared<Group>("Tools");
+		auto globalsGroup = std::make_shared<Group>("Gerais");
+		auto movementGroup = std::make_shared<Group>("Movimento");
+		auto toolsGroup = std::make_shared<Group>("Ferramentas");
 
 		globalsGroup->AddItem(std::make_shared<BoolCommandItem>("godmode"_J));
 		globalsGroup->AddItem(std::make_shared<BoolCommandItem>("neverwanted"_J));
@@ -793,7 +798,7 @@ namespace YimMenu::Submenus
 
 		static float playerScale = 1.0f;
 		toolsGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			ImGui::Text("Player Scale");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Escala do personagem" : "Player Scale");
 			ImGui::SetNextItemWidth(100.0f);
 			if (ImGui::InputFloat("##PlayerScale", &playerScale))
 			{
@@ -817,34 +822,25 @@ namespace YimMenu::Submenus
 		AddCategory(std::move(main));
 
 		auto nativeUtilities = std::make_shared<Category>("Utilidades");
-		auto recoveryUtilities = std::make_shared<Group>("Recuperacao");
-		auto appearanceUtilities = std::make_shared<Group>("Aparencia");
-		auto actionUtilities = std::make_shared<Group>("Acoes");
+		auto recoveryUtilities = std::make_shared<Group>("Recuperação");
+		auto actionUtilities = std::make_shared<Group>("Ações");
 		auto lawUtilities = std::make_shared<Group>("Lei e recompensa");
 		recoveryUtilities->AddItem(std::make_shared<CommandItem>("restoreplayer"_J));
 		recoveryUtilities->AddItem(std::make_shared<CommandItem>("cleanplayernow"_J));
 		recoveryUtilities->AddItem(std::make_shared<CommandItem>("refillcoresnow"_J));
 		recoveryUtilities->AddItem(std::make_shared<CommandItem>("refilldeadeyenow"_J));
-		appearanceUtilities->AddItem(std::make_shared<CommandItem>("randomoutfit"_J));
 		actionUtilities->AddItem(std::make_shared<CommandItem>("cleartasks"_J));
 		actionUtilities->AddItem(std::make_shared<CommandItem>("ragdollplayer"_J));
-		actionUtilities->AddItem(std::make_shared<CommandItem>("groundplayer"_J));
 		actionUtilities->AddItem(std::make_shared<CommandItem>("removeallweapons"_J));
-		lawUtilities->AddItem(std::make_shared<IntCommandItem>("bountyamount"_J));
-		lawUtilities->AddItem(std::make_shared<CommandItem>("applybounty"_J));
-		lawUtilities->AddItem(std::make_shared<IntCommandItem>("wantedscore"_J));
-		lawUtilities->AddItem(std::make_shared<CommandItem>("applywantedscore"_J));
 		lawUtilities->AddItem(std::make_shared<CommandItem>("maximumhostility"_J));
-		lawUtilities->AddItem(std::make_shared<CommandItem>("readlawstate"_J));
 		lawUtilities->AddItem(std::make_shared<CommandItem>("clearlawstate"_J));
 		nativeUtilities->AddItem(std::move(recoveryUtilities));
-		nativeUtilities->AddItem(std::move(appearanceUtilities));
 		nativeUtilities->AddItem(std::move(actionUtilities));
 		nativeUtilities->AddItem(std::move(lawUtilities));
 		AddCategory(std::move(nativeUtilities));
 
 		auto weapons = std::make_shared<Category>("Armas");
-		auto weaponsGlobalsGroup = std::make_shared<Group>("Globals");
+		auto weaponsGlobalsGroup = std::make_shared<Group>("Gerais");
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("infiniteammo"_J));
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("infiniteclip"_J));
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("nospread"_J));
@@ -852,25 +848,25 @@ namespace YimMenu::Submenus
 		weaponsGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("keepgunsclean"_J));
 
 		weaponsGlobalsGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			if (ImGui::Button("Give All Weapons"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Entregar todas as armas" : "Give All Weapons"))
 			{
 				FiberPool::Push([] {
 					YimMenu::Features::TriggerGiveAllWeapons();
 				});
 			}
-			if (ImGui::Button("Give All Ammo"))
+			if (ImGui::Button(Localization::IsPortuguese() ? "Entregar toda a munição" : "Give All Ammo"))
 			{
 				FiberPool::Push([] {
 					YimMenu::Features::TriggerGiveAllAmmo();
 				});
 			}
-		}, "Entregar armas e municao", "Entrega todas as armas ou recarrega toda a municao.", 260.0f));
+		}, "Entregar armas e munição", "Entrega todas as armas ou recarrega toda a munição.", 260.0f));
 
 		weapons->AddItem(weaponsGlobalsGroup);
 
 		weapons->AddItem(std::make_shared<ImGuiItem>([] {
-			ImGui::SeparatorText("Old Deadeye");
-		}, "Dead Eye classico", "Identifica o conjunto de opcoes do modo Dead Eye classico.", 180.0f));
+			ImGui::SeparatorText(Localization::IsPortuguese() ? "Olho da Morte clássico" : "Classic Dead Eye");
+		}, "Olho da Morte clássico", "Mostra o conjunto de opções do Olho da Morte clássico.", 180.0f));
 		weapons->AddItem(std::make_shared<BoolCommandItem>("olddeadeye"_J));
 		weapons->AddItem(std::make_shared<ConditionalItem>("olddeadeye"_J, std::make_shared<BoolCommandItem>("unlockdeadeyeabilities"_J)));
 		weapons->AddItem(std::make_shared<ConditionalItem>("olddeadeye"_J, std::make_shared<BoolCommandItem>("enhanceddeadeye"_J)));
@@ -880,7 +876,10 @@ namespace YimMenu::Submenus
 		weapons->AddItem(std::make_shared<ConditionalItem>("olddeadeye"_J, std::make_shared<BoolCommandItem>("deadeyetagging"_J)));
 		weapons->AddItem(std::make_shared<ConditionalItem>("deadeyetagging"_J, std::make_shared<ImGuiItem>([] {
 			static int current_item_index = 0;
-			const char* items[] = {"Enemies", "Animals", "All"};
+			const char* items[] = {
+			    Localization::IsPortuguese() ? "Inimigos" : "Enemies",
+			    Localization::IsPortuguese() ? "Animais" : "Animals",
+			    Localization::IsPortuguese() ? "Todos" : "All"};
 
 			auto command = Commands::GetCommand<IntCommand>("deadeyetaggingconfig"_J);
 			if (!command)
@@ -897,7 +896,7 @@ namespace YimMenu::Submenus
 			else if (currentValue == 7)
 				current_item_index = 2;
 
-			ImGui::Text("Auto Tag");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Marcação automática" : "Auto Tag");
 			ImGui::SetNextItemWidth(150.f);
 
 			if (ImGui::Combo("##deadeyetaggingdropdown", &current_item_index, items, IM_ARRAYSIZE(items)))
@@ -916,12 +915,12 @@ namespace YimMenu::Submenus
 				//     command->SetValue(newValue);
 				// });
 			}
-		}, "Alvos automaticos do Dead Eye", "Escolhe se o Dead Eye marca inimigos, animais ou todos os alvos.", 260.0f)));
+		}, "Alvos automáticos do Olho da Morte", "Escolhe se o Olho da Morte marca inimigos, animais ou todos os alvos.", 260.0f)));
 
 		AddCategory(std::move(weapons));
 
 		auto horse = std::make_shared<Category>("Cavalo");
-		auto horseGlobalsGroup = std::make_shared<Group>("Globals");
+		auto horseGlobalsGroup = std::make_shared<Group>("Gerais");
 		horseGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("horsegodmode"_J));
 		horseGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("horsenoragdoll"_J));
 		horseGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("horsesuperrun"_J));
@@ -935,7 +934,7 @@ namespace YimMenu::Submenus
 
 		static float horseScale = 1.0f;
 		horseGlobalsGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			ImGui::Text("Horse Scale");
+			ImGui::Text("%s", Localization::IsPortuguese() ? "Escala do cavalo" : "Horse Scale");
 			ImGui::SetNextItemWidth(100.0f);
 			if (ImGui::InputFloat("##HorseScale", &horseScale))
 			{
@@ -947,9 +946,9 @@ namespace YimMenu::Submenus
 		horse->AddItem(horseGlobalsGroup);
 		AddCategory(std::move(horse));
 
-		auto vehicle = std::make_shared<Category>("Veiculo");
-		auto vehicleGlobalsGroup = std::make_shared<Group>("Globals");
-		auto vehicleFunGroup = std::make_shared<Group>("Fun");
+		auto vehicle = std::make_shared<Category>("Veículo");
+		auto vehicleGlobalsGroup = std::make_shared<Group>("Gerais");
+		auto vehicleFunGroup = std::make_shared<Group>("Diversão");
 		vehicleGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("vehiclegodmode"_J));
 		vehicleGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("vehiclenodetach"_J));
 		vehicleGlobalsGroup->AddItem(std::make_shared<BoolCommandItem>("flaminghoovesdraft"_J));
@@ -962,10 +961,10 @@ namespace YimMenu::Submenus
 		vehicle->AddItem(vehicleFunGroup);
 		AddCategory(std::move(vehicle));
 
-		auto animations = std::make_shared<Category>("Animacoes");
+		auto animations = std::make_shared<Category>("Animações");
 		animations->AddItem(std::make_shared<ImGuiItem>([] {
 			YimMenu::Submenus::RenderAnimationsCategory();
-		}, "Animacoes e musicas", "Seleciona animacoes, emotes e musicas para reproduzir no personagem."));
+		}, "Animações e músicas", "Seleciona animações, emotes e músicas para reproduzir no personagem."));
 		AddCategory(std::move(animations));
 	}
 }
