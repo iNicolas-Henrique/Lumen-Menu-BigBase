@@ -3,6 +3,7 @@
 #include "core/frontend/Notifications.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/rdr/Natives.hpp"
+#include "game/rdr/Stats.hpp"
 #include "game/rdr/data/Stats.hpp"
 
 namespace YimMenu::Features
@@ -16,7 +17,7 @@ namespace YimMenu::Features
 			FiberPool::Push([] {
 				for (const auto& stat : Data::int_stats)
 				{
-					StatId statId{};
+					Stats::StatId statId{};
 					statId.BaseId = stat.BaseId;
 					statId.PermutationId = stat.PermutationId;
 					STATS::_STAT_ID_INCREMENT_INT(&statId, stat.desiredValue);
