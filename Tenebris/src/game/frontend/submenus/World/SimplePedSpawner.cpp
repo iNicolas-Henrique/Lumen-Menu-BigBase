@@ -17,6 +17,7 @@
 #include <format>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace YimMenu::Submenus
@@ -50,7 +51,7 @@ namespace YimMenu::Submenus
 			if (lower.starts_with("a_c_") || lower.starts_with("mp_a_c_") || lower.starts_with("p_c_horse_"))
 				return true;
 
-			// A small number of story/cutscene animal models use CS_ instead of A_C_.
+			// Alguns animais de cutscene usam CS_ em vez de A_C_.
 			if (!lower.starts_with("cs_"))
 				return false;
 			static constexpr std::array animalTokens = {
@@ -72,40 +73,55 @@ namespace YimMenu::Submenus
 		{
 			const std::string lower = Lower(model);
 
-			// Protagonistas e personagens principais: nomes reais em vez do nome interno do modelo.
-			if (lower == "player_zero") return "Arthur Morgan";
-			if (lower == "player_three" || lower == "cs_johnmarston") return "John Marston";
-			if (lower == "cs_dutch") return "Dutch van der Linde";
-			if (lower == "cs_hoseamatthews") return "Hosea Matthews";
-			if (lower == "cs_micahbell") return "Micah Bell";
-			if (lower == "cs_abigailroberts") return "Abigail Roberts";
-			if (lower == "cs_sadieadler") return "Sadie Adler";
-			if (lower == "cs_charlessmith") return "Charles Smith";
-			if (lower == "cs_javierescuella") return "Javier Escuella";
-			if (lower == "cs_billwilliamson") return "Bill Williamson";
-			if (lower == "cs_lennysummers") return "Lenny Summers";
-			if (lower == "cs_sean" || lower == "cs_seanmacguire") return "Sean MacGuire";
-			if (lower == "cs_kieran" || lower == "cs_kieranduffy") return "Kieran Duffy";
-			if (lower == "cs_uncle") return "Uncle";
-			if (lower == "cs_jackmarston") return "Jack Marston";
-			if (lower == "cs_mollyoshea") return "Molly O'Shea";
-			if (lower == "cs_susangrimshaw") return "Susan Grimshaw";
-			if (lower == "cs_karen" || lower == "cs_karenjones") return "Karen Jones";
-			if (lower == "cs_marybeth" || lower == "cs_marybethgaskill") return "Mary-Beth Gaskill";
-			if (lower == "cs_tilly" || lower == "cs_tillyjackson") return "Tilly Jackson";
-			if (lower == "cs_reverendswanson") return "Reverend Swanson";
-			if (lower == "cs_strauss" || lower == "cs_leopoldstrauss") return "Leopold Strauss";
-			if (lower == "cs_josiahtrelawny") return "Josiah Trelawny";
-			if (lower == "cs_eagleflies") return "Eagle Flies";
-			if (lower == "cs_rainsfall") return "Rains Fall";
-			if (lower == "cs_edgarross") return "Edgar Ross";
+			// IDs confirmados na própria base de modelos/categorias do projeto.
+			static constexpr std::array<std::pair<std::string_view, std::string_view>, 33> namedStoryPeds{{
+			    {"player_zero", "Arthur Morgan"},
+			    {"player_three", "John Marston"},
+			    {"cs_johnmarston", "John Marston"},
+			    {"cs_abigailroberts", "Abigail Roberts"},
+			    {"cs_dutch", "Dutch van der Linde"},
+			    {"cs_hoseamatthews", "Hosea Matthews"},
+			    {"cs_javierescuella", "Javier Escuella"},
+			    {"cs_micahbell", "Micah Bell"},
+			    {"cs_billwilliamson", "Bill Williamson"},
+			    {"cs_lenny", "Lenny Summers"},
+			    {"cs_sean", "Sean MacGuire"},
+			    {"cs_kieran", "Kieran Duffy"},
+			    {"cs_uncle", "Uncle"},
+			    {"cs_jackmarston", "Jack Marston"},
+			    {"cs_jackmarston_teen", "Jack Marston (Teen)"},
+			    {"cs_mollyoshea", "Molly O'Shea"},
+			    {"cs_susangrimshaw", "Susan Grimshaw"},
+			    {"cs_karen", "Karen Jones"},
+			    {"cs_marybeth", "Mary-Beth Gaskill"},
+			    {"cs_tilly", "Tilly Jackson"},
+			    {"cs_revswanson", "Reverend Orville Swanson"},
+			    {"cs_leostrauss", "Leopold Strauss"},
+			    {"cs_josiahtrelawny", "Josiah Trelawny"},
+			    {"cs_mrsadler", "Sadie Adler"},
+			    {"cs_charlessmith", "Charles Smith"},
+			    {"cs_mrpearson", "Simon Pearson"},
+			    {"cs_eagleflies", "Eagle Flies"},
+			    {"cs_rainsfall", "Rains Fall"},
+			    {"cs_edgarross", "Edgar Ross"},
+			    {"cs_miltonandrews", "Andrew Milton"},
+			    {"cs_leviticuscornwall", "Leviticus Cornwall"},
+			    {"cs_bronte", "Angelo Bronte"},
+			    {"cs_sistercalderon", "Sister Calderón"},
+			}};
+
+			for (const auto& [modelName, displayName] : namedStoryPeds)
+				if (lower == modelName)
+					return std::string(displayName);
 
 			// Para os demais humanos, remove prefixos técnicos e deixa o papel/nome legível.
 			std::string_view clean = model;
-			static constexpr std::array<std::string_view, 19> prefixes = {
+			static constexpr std::array<std::string_view, 27> prefixes = {
+			    "MP_U_M_M_", "MP_U_F_M_", "MP_A_M_M_", "MP_A_F_M_",
 			    "CS_", "U_M_M_", "U_F_M_", "U_M_O_", "U_F_O_", "U_M_Y_", "U_F_Y_",
 			    "A_M_M_", "A_F_M_", "A_M_O_", "A_F_O_", "A_M_Y_", "A_F_Y_",
-			    "S_M_M_", "S_F_M_", "S_M_Y_", "S_F_Y_", "MP_U_M_M_", "MP_U_F_M_"};
+			    "S_M_M_", "S_F_M_", "S_M_Y_", "S_F_Y_", "G_M_M_", "G_F_M_",
+			    "P_U_M_M_", "P_U_F_M_", "P_M_M_", "P_F_M_"};
 			for (const auto prefix : prefixes)
 			{
 				if (clean.size() >= prefix.size() && Lower(clean.substr(0, prefix.size())) == Lower(prefix))
@@ -144,7 +160,7 @@ namespace YimMenu::Submenus
 			PED::SET_PED_HEARING_RANGE(pedHandle, 500.0f);
 			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(pedHandle, false);
 
-			// O alvo é exclusivamente o personagem local. Não cria hostilidade contra outros jogadores.
+			// Alvo exclusivo: personagem local. Não cria hostilidade genérica contra outros jogadores.
 			TASK::TASK_COMBAT_PED(pedHandle, playerPed, 0, 16);
 		}
 
@@ -240,7 +256,6 @@ namespace YimMenu::Submenus
 					ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Nenhum modelo encontrado." : "No models found.");
 					return;
 				}
-				m_Selected = std::clamp(m_Selected, 0, static_cast<int>(entries.size()) - 1);
 
 				ImGui::TextDisabled("%s", Localization::IsPortuguese()
 				        ? "Selecione um modelo e pressione Enter ou o botão Criar."
@@ -251,34 +266,47 @@ namespace YimMenu::Submenus
 					        : "Story characters appear first. Spawned humans automatically attack your character with a knife.");
 				ImGui::SetNextItemWidth(-FLT_MIN);
 				ImGui::InputTextWithHint("##ped_filter", Localization::IsPortuguese() ? "Pesquisar nome ou modelo" : "Search name or model", m_Filter, sizeof(m_Filter));
-				ImGui::TextDisabled(Localization::IsPortuguese() ? "%zu modelos conhecidos" : "%zu known models", entries.size());
+
+				const auto visibleIndices = BuildVisibleIndices(entries);
+				ImGui::TextDisabled(Localization::IsPortuguese() ? "%zu de %zu modelos" : "%zu of %zu models", visibleIndices.size(), entries.size());
 				ImGui::Separator();
 
-				const std::string filter = Lower(m_Filter);
+				if (!visibleIndices.empty() && std::find(visibleIndices.begin(), visibleIndices.end(), m_Selected) == visibleIndices.end())
+					m_Selected = visibleIndices.front();
+
 				if (ImGui::BeginChild("##ped_list", ImVec2(0.0f, 430.0f), true))
 				{
-					for (std::size_t i = 0; i < entries.size(); ++i)
+					if (visibleIndices.empty())
 					{
-						const auto& entry = entries[i];
-						if (!filter.empty() && Lower(entry.Display + " " + entry.Model).find(filter) == std::string::npos)
-							continue;
-						const std::string visible = entry.Story ? entry.Display + (Localization::IsPortuguese() ? "  [História]" : "  [Story]") : entry.Display;
-						const std::string row = visible + "##" + entry.Model;
-						if (ImGui::Selectable(row.c_str(), m_Selected == static_cast<int>(i)))
-							m_Selected = static_cast<int>(i);
-						if (m_Selected == static_cast<int>(i) && m_ScrollSelected)
+						ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Nenhum resultado para este filtro." : "No results for this filter.");
+					}
+					else
+					{
+						for (const int index : visibleIndices)
 						{
-							ImGui::SetScrollHereY(0.5f);
-							m_ScrollSelected = false;
+							const auto& entry = entries[static_cast<std::size_t>(index)];
+							const std::string visible = entry.Story ? entry.Display + (Localization::IsPortuguese() ? "  [História]" : "  [Story]") : entry.Display;
+							const std::string row = visible + "##" + entry.Model;
+							if (ImGui::Selectable(row.c_str(), m_Selected == index))
+								m_Selected = index;
+							if (m_Selected == index && m_ScrollSelected)
+							{
+								ImGui::SetScrollHereY(0.5f);
+								m_ScrollSelected = false;
+							}
 						}
 					}
 				}
 				ImGui::EndChild();
 
-				ImGui::Text("%s: %s", Localization::IsPortuguese() ? "Nome" : "Name", entries[m_Selected].Display.c_str());
-				ImGui::TextDisabled("Model: %s", entries[m_Selected].Model.c_str());
+				if (visibleIndices.empty())
+					return;
+
+				m_Selected = std::clamp(m_Selected, 0, static_cast<int>(entries.size()) - 1);
+				ImGui::Text("%s: %s", Localization::IsPortuguese() ? "Nome" : "Name", entries[static_cast<std::size_t>(m_Selected)].Display.c_str());
+				ImGui::TextDisabled("Model: %s", entries[static_cast<std::size_t>(m_Selected)].Model.c_str());
 				if (ImGui::Button(Localization::IsPortuguese() ? "Criar" : "Spawn", ImVec2(-FLT_MIN, 0.0f)))
-					SpawnPed(entries[m_Selected]);
+					SpawnPed(entries[static_cast<std::size_t>(m_Selected)]);
 			}
 
 			std::string_view GetMenuLabel() const override
@@ -299,29 +327,52 @@ namespace YimMenu::Submenus
 			bool HandleEditorKey(int key) override
 			{
 				const auto& entries = GetEntries(m_Kind);
-				if (entries.empty())
+				const auto visibleIndices = BuildVisibleIndices(entries);
+				if (visibleIndices.empty())
 					return false;
+
+				auto current = std::find(visibleIndices.begin(), visibleIndices.end(), m_Selected);
+				std::size_t position = current == visibleIndices.end() ? 0 : static_cast<std::size_t>(std::distance(visibleIndices.begin(), current));
+
 				if (key == VK_UP)
 				{
-					m_Selected = m_Selected <= 0 ? static_cast<int>(entries.size()) - 1 : m_Selected - 1;
+					position = position == 0 ? visibleIndices.size() - 1 : position - 1;
+					m_Selected = visibleIndices[position];
 					m_ScrollSelected = true;
 					return true;
 				}
 				if (key == VK_DOWN)
 				{
-					m_Selected = (m_Selected + 1) % static_cast<int>(entries.size());
+					position = (position + 1) % visibleIndices.size();
+					m_Selected = visibleIndices[position];
 					m_ScrollSelected = true;
 					return true;
 				}
 				if (key == VK_RETURN)
 				{
-					SpawnPed(entries[std::clamp(m_Selected, 0, static_cast<int>(entries.size()) - 1)]);
+					m_Selected = visibleIndices[position];
+					SpawnPed(entries[static_cast<std::size_t>(m_Selected)]);
 					return true;
 				}
 				return false;
 			}
 
 		private:
+			std::vector<int> BuildVisibleIndices(const std::vector<PedEntry>& entries) const
+			{
+				std::vector<int> visible;
+				visible.reserve(entries.size());
+				const std::string filter = Lower(m_Filter);
+				for (std::size_t i = 0; i < entries.size(); ++i)
+				{
+					const auto& entry = entries[i];
+					if (!filter.empty() && Lower(entry.Display + " " + entry.Model).find(filter) == std::string::npos)
+						continue;
+					visible.push_back(static_cast<int>(i));
+				}
+				return visible;
+			}
+
 			PedListKind m_Kind;
 			int m_Selected = 0;
 			bool m_ScrollSelected = false;
