@@ -15,9 +15,9 @@ namespace YimMenu::Submenus
 		constexpr int kBondingAttribute = 7; // ePedAttribute::PA_BONDING
 		constexpr int kMaxBondingLevel = 4;
 
-		Ped ResolvePlayerHorse()
+		int ResolvePlayerHorse()
 		{
-			const Ped playerPed = PLAYER::PLAYER_PED_ID();
+			const int playerPed = PLAYER::PLAYER_PED_ID();
 			if (ENTITY::DOES_ENTITY_EXIST(playerPed) && PED::IS_PED_ON_MOUNT(playerPed))
 				return PED::GET_MOUNT(playerPed);
 			return PLAYER::_GET_SADDLE_HORSE_FOR_PLAYER(PLAYER::PLAYER_ID());
@@ -26,7 +26,7 @@ namespace YimMenu::Submenus
 		void MaximizeHorseBonding()
 		{
 			FiberPool::Push([] {
-				const Ped horse = ResolvePlayerHorse();
+				const int horse = ResolvePlayerHorse();
 				if (!ENTITY::DOES_ENTITY_EXIST(horse) || ENTITY::IS_ENTITY_DEAD(horse))
 				{
 					Notifications::Show("Tenebris",
