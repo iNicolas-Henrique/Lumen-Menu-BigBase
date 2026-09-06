@@ -8,8 +8,10 @@
 #include "game/backend/ScriptMgr.hpp"
 #include "game/frontend/fonts/Fonts.hpp"
 #include "game/pointers/Pointers.hpp"
+#include "submenus/AbilityCardPower.hpp"
 #include "submenus/AbilityCards.hpp"
 #include "submenus/Debug.hpp"
+#include "submenus/HorseBonding.hpp"
 #include "submenus/Network.hpp"
 #include "submenus/Players.hpp"
 #include "submenus/Recovery.hpp"
@@ -67,6 +69,8 @@ namespace YimMenu
 		// The old clothes/face/eyebrow/voice editor is intentionally not installed;
 		// the Self UI exposes the ability-card editor instead.
 		Submenus::InstallAbilityCards(selfSubmenu);
+		Submenus::InstallAbilityCardPower(selfSubmenu);
+		Submenus::InstallHorseBonding(selfSubmenu);
 		UIManager::AddSubmenu(std::move(selfSubmenu));
 		UIManager::AddSubmenu(std::make_shared<Submenus::Teleport>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Network>());
