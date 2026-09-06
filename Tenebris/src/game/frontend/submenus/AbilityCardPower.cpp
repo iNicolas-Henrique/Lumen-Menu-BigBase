@@ -7,6 +7,7 @@
 #include "game/pointers/Pointers.hpp"
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Natives.hpp"
+#include "game/rdr/Player.hpp"
 #include "game/rdr/ScriptGlobal.hpp"
 
 #include <algorithm>
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <format>
 #include <string>
+#include <string_view>
 
 namespace YimMenu
 {
