@@ -102,6 +102,9 @@ namespace YimMenu
 			if (HasAny(key, {"maximumhostility", "maximum hostility"})) return "Coloca imediatamente a perseguição da lei no nível máximo.";
 			if (HasAny(key, {"clearlawstate", "clear law"})) return "Remove a recompensa e encerra a perseguição atual da lei.";
 			if (HasAny(key, {"unlimiteditems", "unlimited items"})) return "Impede o consumo de itens ao bloquear a mensagem de uso enviada ao servidor enquanto a opção estiver ativada.";
+			if (HasAny(key, {"zombieslogging", "zombies logging"})) return "Registra no log o início das rodadas, a quantidade de zumbis restantes, falhas de criação e reinícios do minijogo.";
+			if (HasAny(key, {"hardmode", "hard mode"})) return "Aumenta a vida, a armadura, a velocidade e os atributos de combate dos zumbis criados pelo minijogo.";
+			if (HasAny(key, {"undeadnightmare", "undead nightmare"})) return "Inicia o minijogo de ondas de zumbis; uma nova rodada começa quando os zumbis da rodada atual são eliminados.";
 			if (HasAny(key, {"godmode", "god mode"})) return "Impede que seu personagem receba dano enquanto a opção estiver ativada.";
 			if (HasAny(key, {"noragdoll", "no ragdoll"})) return "Impede quedas e efeitos de ragdoll no seu personagem.";
 			if (HasAny(key, {"antihogtie", "anti hogtie"})) return "Impede que seu personagem seja amarrado.";
@@ -170,6 +173,9 @@ namespace YimMenu
 			const std::string key = ToLower(std::string(name) + " " + std::string(label));
 			if (HasAny(key, {"unlimiteditems"})) return "Prevents item consumption by blocking the item-use message sent to the server while enabled.";
 			if (HasAny(key, {"completedailies"})) return "Completes the available daily challenges using their corresponding stats.";
+			if (HasAny(key, {"zombieslogging"})) return "Logs round starts, remaining zombie counts, spawn failures, and minigame resets.";
+			if (HasAny(key, {"hardmode"})) return "Increases zombie health, armor, movement speed, and combat attributes in the minigame.";
+			if (HasAny(key, {"undeadnightmare"})) return "Starts the zombie-wave minigame; a new round begins after the current wave is eliminated.";
 			if (!LooksPortuguese(description) && !description.empty()) return std::string(description);
 			if (HasAny(key, {"maximumhostility"})) return "Immediately sets law pursuit to the maximum wanted level.";
 			if (HasAny(key, {"clearlawstate"})) return "Clears the bounty and ends the current law pursuit.";
