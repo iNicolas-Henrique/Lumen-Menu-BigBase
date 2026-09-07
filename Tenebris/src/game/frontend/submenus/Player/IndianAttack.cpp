@@ -19,6 +19,7 @@ namespace YimMenu::Features
         constexpr float kMinSpawnDistance = 160.0f;
         constexpr float kMaxSpawnDistance = 220.0f;
         constexpr float kNearbyNpcRadius = 80.0f;
+        constexpr int kMaxNearbyPeds = 64;
         constexpr auto kNearbyScanInterval = std::chrono::milliseconds(600);
         constexpr float kRadToDeg = 57.29577951308232f;
 
@@ -102,11 +103,11 @@ namespace YimMenu::Features
             PED::SET_PED_COMBAT_RANGE(pedHandle, ranged ? 3 : 2);
             PED::SET_PED_ACCURACY(pedHandle, ranged ? 78 : 65);
 
-            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 5, true);   // Always fight
-            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 13, true);  // Aggressive
-            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 17, false); // Never force flee
-            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 46, true);  // Fight armed targets
-            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 58, true);  // Disable flee from combat
+            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 5, true);
+            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 13, true);
+            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 17, false);
+            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 46, true);
+            PED::SET_PED_COMBAT_ATTRIBUTES(pedHandle, 58, true);
 
             TASK::TASK_COMBAT_PED(pedHandle, targetPed, 0, 16);
         }
@@ -254,12 +255,15 @@ namespace YimMenu::Features
 
             const int selfHandle = self.GetHandle();
             const Vector3 selfPos = self.GetPosition();
-            int nearbyPeds[64]{};
-            const int count = PED::GET_PED_NEARBY_PEDS(selfHandle, nearbyPeds, 0, 64);
 
-            for (int i = 0; i < count; ++i)
+            int nearbyPeds[kMaxNearbyPeds * 2 + 2]{};
+            nearbyPeds[0] = kMaxNearbyPeds;
+            const int count = PED::GET_PED_NEARBY_PEDS(selfHandle, nearbyPeds, -1, 0);
+            const int usableCount = count < kMaxNearbyPeds ? count : kMaxNearbyPeds;
+
+            for (int i = 0; i < usableCount; ++i)
             {
-                const int candidate = nearbyPeds[i];
+                const int candidate = nearbyPeds[i * 2 + 2];
                 if (!candidate || candidate == selfHandle || !ENTITY::DOES_ENTITY_EXIST(candidate) || ENTITY::IS_ENTITY_DEAD(candidate))
                     continue;
                 if (!PED::IS_PED_HUMAN(candidate) || PED::IS_PED_A_PLAYER(candidate))
