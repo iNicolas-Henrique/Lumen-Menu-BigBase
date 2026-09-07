@@ -41,6 +41,8 @@ namespace YimMenu::Features
 		using LoopedCommand::LoopedCommand;
 
 		bool wasDeadeyeActive = false;
+		bool deadeyeLevelOverrideApplied = false;
+		int savedDeadeyeAbilityLevel = -1;
 
 		IntCommand _DeadeyeTaggingConfig{
 			"deadeyetaggingconfig",
@@ -103,6 +105,18 @@ namespace YimMenu::Features
 			return false;
 		}
 
+		void RestoreDeadeyeAbilityLevel(int playerId)
+		{
+			if (!deadeyeLevelOverrideApplied)
+				return;
+
+			if (savedDeadeyeAbilityLevel >= 0 && savedDeadeyeAbilityLevel <= 5)
+				PLAYER::_SET_DEADEYE_ABILITY_LEVEL(playerId, savedDeadeyeAbilityLevel);
+
+			deadeyeLevelOverrideApplied = false;
+			savedDeadeyeAbilityLevel = -1;
+		}
+
 		virtual void OnTick() override
 		{
 			auto ped = Self::GetPed();
@@ -118,12 +132,16 @@ namespace YimMenu::Features
 			{
 				MISC::SET_TIME_SCALE(1.0f);
 				PLAYER::_MODIFY_INFINITE_TRAIL_VISION(playerId, false);
+				RestoreDeadeyeAbilityLevel(playerId);
 			}
 
 			wasDeadeyeActive = isDeadeyeActive;
 
 			if (!isDeadeyeActive)
+			{
+				RestoreDeadeyeAbilityLevel(playerId);
 				return;
+			}
 
 			PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(PERSONA_DISABLE_DEADEYE_PERFECT_ACCURACY, false);
 
@@ -245,6 +263,19 @@ namespace YimMenu::Features
 
 			if (_UnlockDeadeyeAbilities.GetState())
 			{
+				if (!deadeyeLevelOverrideApplied)
+				{
+					const int currentLevel = PLAYER::_GET_DEADEYE_ABILITY_LEVEL(playerId);
+					savedDeadeyeAbilityLevel = (currentLevel >= 0 && currentLevel <= 5) ? currentLevel : -1;
+					deadeyeLevelOverrideApplied = true;
+				}
+
+				// Nível 5 é o nível máximo do Dead Eye do modo história e ativa o
+				// destaque original de áreas críticas/pontos fracos. Reaplicamos
+				// somente enquanto o Dead Eye está ativo para resistir a scripts
+				// online que possam restaurar o nível durante a sessão.
+				PLAYER::_SET_DEADEYE_ABILITY_LEVEL(playerId, 5);
+
 				for (int abilityId = 1; abilityId <= 5; ++abilityId)
 				{
 					if (PLAYER::_IS_DEADEYE_ABILITY_LOCKED(playerId, abilityId))
@@ -252,6 +283,10 @@ namespace YimMenu::Features
 						PLAYER::_SET_DEADEYE_ABILITY_LOCKED(playerId, abilityId, false);
 					}
 				}
+			}
+			else
+			{
+				RestoreDeadeyeAbilityLevel(playerId);
 			}
 
 			if (_EnhancedDeadeye.GetState())
@@ -267,11 +302,15 @@ namespace YimMenu::Features
 
 		virtual void OnDisable() override
 		{
+			auto playerId = Self::GetPlayer().GetId();
+			RestoreDeadeyeAbilityLevel(playerId);
+
 			auto ped = Self::GetPed();
 			if (!ped.IsValid())
+			{
+				wasDeadeyeActive = false;
 				return;
-
-			auto playerId = Self::GetPlayer().GetId();
+			}
 
 			PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(PERSONA_DISABLE_DEADEYE_PERFECT_ACCURACY, true);
 			PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(ePersonaAbilityFlag::PERSONA_EXIT_DEADEYE_ON_TAKING_DAMAGE, true);
@@ -296,7 +335,7 @@ namespace YimMenu::Features
 		}
 
 		BoolCommand _DeadeyeTagging{"deadeyetagging", "Deadeye Auto-Tagging", "Automatically tags enemies and animals in Deadeye", false};
-		BoolCommand _UnlockDeadeyeAbilities{"unlockdeadeyeabilities", "Unlock All Deadeye Abilities", "Unlocks all Deadeye abilities regardless of progression", false};
+		BoolCommand _UnlockDeadeyeAbilities{"unlockdeadeyeabilities", "Unlock Deadeye Abilities + Weak Spots", "Unlocks all Deadeye abilities and uses story-mode level 5 weak-spot highlighting while Dead Eye is active", false};
 		BoolCommand _EnhancedDeadeye{"enhanceddeadeye", "Enhanced Deadeye", "Adds cinematic time dilation and visual effects", false};
 		BoolCommand _SlowDeadeyeDrain{"slowdeadeyedrain", "Slow Deadeye Drain", "Significantly reduces Deadeye drain rate", false};
 		BoolCommand _SlipperyBastardAccuracy{"slipperybastardaccuracy", "Slippery Bastard Accuracy", "Ensures perfect accuracy with Slippery Bastard", false};
