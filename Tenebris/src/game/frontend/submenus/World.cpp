@@ -98,7 +98,7 @@ namespace YimMenu::Submenus
 				ImGui::Text("%s", std::format("{}: {}/{}", Localization::IsPortuguese() ? "Veículos" : "Vehicles", GetVehiclePool()->m_Size - GetVehiclePool()->GetNumFreeSlots(), GetVehiclePool()->m_Size).data());
 			if (GetObjectPool())
 				ImGui::Text("%s", std::format("{}: {}/{}", Localization::IsPortuguese() ? "Objetos" : "Objects", GetObjectPool()->m_Size - GetObjectPool()->GetNumFreeSlots(), GetObjectPool()->m_Size).data());
-		}, "Uso dos pools", "Mostra quantos PEDs, veículos e objetos estão carregados nos pools do jogo.", 300.0f));
+		}, "Uso dos pools", "Mostra quantos PEDs, veículos e objetos estão carregados nos pools do jogo.", 300.0f);
 
 		auto killPeds = std::make_shared<Group>("Eliminar", 1);
 		killPeds->AddItem(std::make_shared<CommandItem>("killallpeds"_J));
