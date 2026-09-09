@@ -33,6 +33,32 @@ namespace YimMenu
 			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, position, color, text.data(), text.data() + text.size());
 		}
 
+		void DrawPlayerMustDieLabel(ImDrawList* drawList, ImVec2 position, float scale, float alpha, float time)
+		{
+			constexpr std::string_view text = "Player Must Die";
+			const ImFont* font = ImGui::GetFont();
+			const float size = ImGui::GetFontSize() * scale;
+			position.x += std::sin(time * 30.0f) * 1.15f * scale;
+			position.y += std::sin(time * 37.0f + 0.7f) * 0.72f * scale;
+
+			float x = position.x;
+			for (std::size_t i = 0; i < text.size(); ++i)
+			{
+				const float p = text.size() > 1 ? static_cast<float>(i) / static_cast<float>(text.size() - 1) : 0.0f;
+				const float wave = 0.5f + 0.5f * std::sin(time * 1.7f + p * 2.4f);
+				const float blend = std::clamp(0.10f + p * 0.68f + wave * 0.22f, 0.0f, 1.0f);
+				const int r = static_cast<int>(225.0f + 30.0f * blend);
+				const int g = static_cast<int>(25.0f + 220.0f * blend);
+				const int b = static_cast<int>(25.0f + 220.0f * blend);
+				const ImU32 color = ApplyAlpha(IM_COL32(r, g, b, 255), alpha);
+				const float jitterY = std::sin(time * 25.0f + static_cast<float>(i) * 1.83f) * 0.42f * scale;
+				const char* begin = text.data() + i;
+				const char* end = begin + 1;
+				drawList->AddText(font, size, ImVec2(x, position.y + jitterY), color, begin, end);
+				x += font->CalcTextSizeA(size, FLT_MAX, 0.0f, begin, end).x;
+			}
+		}
+
 		void QueueMenuSound(const char* sound)
 		{
 			if (!sound || !ScriptMgr::CanTick())
@@ -360,16 +386,23 @@ namespace YimMenu
 			for (std::size_t index = first; index < last; ++index)
 			{
 				const bool selected = index == m_Selected;
-				const ImU32 rowColor = selected ? C(kLightGreen) : C(index % 2 ? IM_COL32(18, 21, 14, 235) : IM_COL32(10, 12, 8, 235));
+				const bool playerMustDie = entries[index].first == "Player Must Die";
+				const ImU32 rowColor = selected
+				    ? (playerMustDie ? C(IM_COL32(76, 14, 14, 238)) : C(kLightGreen))
+				    : C(index % 2 ? IM_COL32(18, 21, 14, 235) : IM_COL32(10, 12, 8, 235));
 				drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kOptionHeight), rowColor);
 				if (selected)
-					drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + 4.0f, y + kOptionHeight), white);
+					drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + 4.0f, y + kOptionHeight), playerMustDie ? C(IM_COL32(255, 70, 70, 255)) : white);
 				const float rightWidth = ImGui::CalcTextSize(entries[index].second.c_str()).x * layout.Scale;
 				const float labelClipRight = std::max(kMenuX + 8.0f, kMenuX + kMenuWidth - rightWidth - 20.0f);
 				drawList->PushClipRect(ImVec2(kMenuX + 8.0f, y), ImVec2(labelClipRight, y + kOptionHeight), true);
-				DrawText(drawList, ImVec2(kMenuX + 10.0f * layout.Scale, y + 5.0f * layout.Scale), selected ? C(IM_COL32(10, 10, 10, 255)) : white, entries[index].first, layout.Scale);
+				const ImVec2 labelPos(kMenuX + 10.0f * layout.Scale, y + 5.0f * layout.Scale);
+				if (playerMustDie)
+					DrawPlayerMustDieLabel(drawList, labelPos, layout.Scale, classicAlpha, time);
+				else
+					DrawText(drawList, labelPos, selected ? C(IM_COL32(10, 10, 10, 255)) : white, entries[index].first, layout.Scale);
 				drawList->PopClipRect();
-				DrawText(drawList, ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f), selected ? C(IM_COL32(10, 10, 10, 255)) : white, entries[index].second, layout.Scale);
+				DrawText(drawList, ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f), selected && !playerMustDie ? C(IM_COL32(10, 10, 10, 255)) : white, entries[index].second, layout.Scale);
 				y += kOptionHeight;
 			}
 
