@@ -190,7 +190,7 @@ namespace YimMenu::Features
             PED::SET_PED_COMBAT_ATTRIBUTES(ped, 17, false);
             PED::SET_PED_COMBAT_ATTRIBUTES(ped, 125, false);
             PED::SET_PED_COMBAT_ATTRIBUTES(ped, 93, melee);
-            PED::_SET_PED_DAMAGE_MODIFIER(ped, 1.15f);
+            PED::SET_PED_TO_PLAYER_WEAPON_DAMAGE_MODIFIER(ped, 1.15f);
 
             TASK::TASK_COMBAT_PED(ped, target, 0, 16);
         }
@@ -203,7 +203,7 @@ namespace YimMenu::Features
             TASK::CLEAR_PED_TASKS(ped, true, false);
             PED::SET_PED_KEEP_TASK(ped, false);
             PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(ped, false);
-            PED::_SET_PED_DAMAGE_MODIFIER(ped, 1.0f);
+            PED::SET_PED_TO_PLAYER_WEAPON_DAMAGE_MODIFIER(ped, 1.0f);
             for (int attr : {4, 5, 8, 21, 25, 28, 42, 46, 50, 58, 78, 81, 93, 115})
                 PED::SET_PED_COMBAT_ATTRIBUTES(ped, attr, false);
         }
