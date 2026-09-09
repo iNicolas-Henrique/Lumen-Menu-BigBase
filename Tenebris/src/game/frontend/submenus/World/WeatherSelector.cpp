@@ -193,6 +193,10 @@ namespace YimMenu::Submenus
 			{
 			}
 
+			void Draw() override
+			{
+			}
+
 			std::string_view GetMenuLabel() const override
 			{
 				return WeatherLabel(m_Entry);
@@ -222,6 +226,10 @@ namespace YimMenu::Submenus
 		{
 		public:
 			explicit WeatherVariantItem(const WeatherVariantEntry& entry) : m_Entry(entry)
+			{
+			}
+
+			void Draw() override
 			{
 			}
 
@@ -257,6 +265,10 @@ namespace YimMenu::Submenus
 		class WeatherSectionItem final : public UIItem
 		{
 		public:
+			void Draw() override
+			{
+			}
+
 			std::string_view GetMenuLabel() const override
 			{
 				return Localization::IsPortuguese() ? "--- Variantes de clima ---" : "--- Weather variants ---";
@@ -271,6 +283,10 @@ namespace YimMenu::Submenus
 		class RestoreWeatherItem final : public UIItem
 		{
 		public:
+			void Draw() override
+			{
+			}
+
 			std::string_view GetMenuLabel() const override
 			{
 				return Localization::IsPortuguese() ? "Restaurar clima automático" : "Restore automatic weather";
