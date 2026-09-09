@@ -66,6 +66,7 @@ namespace YimMenu::Features
             Clock::time_point NextTask{};
             Clock::time_point NextVoice{};
             Clock::time_point NextStrike{};
+            bool LightningUsed{};
             bool Dormant{};
         };
 
@@ -435,6 +436,7 @@ namespace YimMenu::Features
                 dormant ? AfterMs(3500, 7000) : now,
                 AfterMs(7000, 14000),
                 AfterMs(8000, 15000),
+                false,
                 dormant});
         }
 
@@ -731,10 +733,10 @@ namespace YimMenu::Features
                         actor.NextVoice = AfterMs(5000, 9000);
                     }
 
-                    if (target == selfHandle && Distance(pos, selfPos) < 24.0f && now >= actor.NextStrike)
+                    if (!actor.LightningUsed && target == selfHandle && Distance(pos, selfPos) < 24.0f && now >= actor.NextStrike)
                     {
                         StrikeLightning(selfHandle, selfPos);
-                        actor.NextStrike = AfterMs(13000, 21000);
+                        actor.LightningUsed = true;
                     }
                 }
                 else if (actor.Type != Role::Alligator && now >= actor.NextVoice)
@@ -799,7 +801,7 @@ namespace YimMenu::Features
                 return;
             }
 
-            const bool torch = CountRole(Role::Torch, region) < 2 && RandomInt(1, 100) <= (region == Region::Lagras ? 24 : 9);
+            const bool torch = CountRole(Role::Torch, region) < 1 && RandomInt(1, 100) <= (region == Region::Lagras ? 8 : 3);
             const int ped = CreateLocalPed(RegionalModel(region), pos, HeadingTo(pos, selfPos));
             if (!ped)
                 return;
