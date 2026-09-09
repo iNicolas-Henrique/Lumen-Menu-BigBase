@@ -15,10 +15,6 @@
 #include "game/backend/Self.hpp"
 #include "game/frontend/items/Items.hpp"
 #include "game/rdr/Natives.hpp"
-#include "game/rdr/Pools.hpp"
-
-#include <rage/fwBasePool.hpp>
-#include <rage/pools.hpp>
 
 namespace YimMenu::Submenus
 {
@@ -91,15 +87,6 @@ namespace YimMenu::Submenus
 		spawners->AddItem(vehicleSpawnerGroup);
 		spawners->AddItem(trainSpawnerGroup);
 
-		auto poolCounter = std::make_shared<ImGuiItem>([] {
-			if (GetPedPool())
-				ImGui::Text("%s", std::format("PEDs: {}/{}", GetPedPool()->m_Size - GetPedPool()->GetNumFreeSlots(), GetPedPool()->m_Size).data());
-			if (GetVehiclePool())
-				ImGui::Text("%s", std::format("{}: {}/{}", Localization::IsPortuguese() ? "Veículos" : "Vehicles", GetVehiclePool()->m_Size - GetVehiclePool()->GetNumFreeSlots(), GetVehiclePool()->m_Size).data());
-			if (GetObjectPool())
-				ImGui::Text("%s", std::format("{}: {}/{}", Localization::IsPortuguese() ? "Objetos" : "Objects", GetObjectPool()->m_Size - GetObjectPool()->GetNumFreeSlots(), GetObjectPool()->m_Size).data());
-		}, "Uso dos pools", "Mostra quantos PEDs, veículos e objetos estão carregados nos pools do jogo.", 300.0f);
-
 		auto killPeds = std::make_shared<Group>("Eliminar", 1);
 		killPeds->AddItem(std::make_shared<CommandItem>("killallpeds"_J));
 		killPeds->AddItem(std::make_shared<CommandItem>("killallenemies"_J));
@@ -125,7 +112,6 @@ namespace YimMenu::Submenus
 		misc->AddItem(std::move(eventOverride));
 		misc->AddItem(std::make_shared<CommandItem>("mapeditor"_J));
 
-		main->AddItem(std::move(poolCounter));
 		main->AddItem(std::move(killPeds));
 		main->AddItem(std::move(deleteOpts));
 		main->AddItem(std::move(bringOpts));

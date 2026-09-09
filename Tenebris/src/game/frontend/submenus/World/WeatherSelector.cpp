@@ -4,11 +4,15 @@
 #include "core/frontend/Notifications.hpp"
 #include "core/frontend/manager/UIItem.hpp"
 #include "game/backend/FiberPool.hpp"
+#include "game/frontend/items/Items.hpp"
+#include "game/pointers/Pointers.hpp"
 #include "game/rdr/Natives.hpp"
+#include "game/rdr/invoker/Invoker.hpp"
 
-#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <string>
+#include <utility>
 
 namespace YimMenu::Submenus
 {
@@ -19,6 +23,13 @@ namespace YimMenu::Submenus
 			const char* Id;
 			const char* Pt;
 			const char* En;
+		};
+
+		struct WeatherVariantEntry
+		{
+			const char* Type;
+			const char* Variant;
+			bool SinglePlayerOnly;
 		};
 
 		constexpr std::array kWeatherEntries = {
@@ -45,16 +56,86 @@ namespace YimMenu::Submenus
 		    WeatherEntry{"WHITEOUT", "Branco total", "Whiteout"},
 		};
 
+		constexpr std::array kWeatherVariants = {
+		    WeatherVariantEntry{"BLIZZARD", "BLIZZARD_winter2", false},
+		    WeatherVariantEntry{"CLOUDS", "CLOUDS_mudtown3B", false},
+		    WeatherVariantEntry{"DRIZZLE", "DRIZZLE_finale1", false},
+		    WeatherVariantEntry{"DRIZZLE", "DRIZZLE_finale1B", false},
+		    WeatherVariantEntry{"FOG", "FOG_guama", false},
+		    WeatherVariantEntry{"FOG", "Fog_MP_Pred", false},
+		    WeatherVariantEntry{"GROUNDBLIZZARD", "GROUNDBLIZZARD_odriscols", false},
+		    WeatherVariantEntry{"GROUNDBLIZZARD", "GROUNDBLIZZARD_winter2", false},
+		    WeatherVariantEntry{"HIGHPRESSURE", "HIGHPRESSURE_guama", false},
+		    WeatherVariantEntry{"HURRICANE", "HURRICANE_guama", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_braithwaites3", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_finale1", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_finale1B", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_finale2", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_guama", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_MP_intro", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_MP_Pred", false},
+		    WeatherVariantEntry{"MISTY", "MISTY_train1", false},
+		    WeatherVariantEntry{"OVERCASTDARK", "OVERCASTDARK_finale2", false},
+		    WeatherVariantEntry{"OVERCASTDARK", "OVERCASTDARK_Gang2", false},
+		    WeatherVariantEntry{"OVERCASTDARK", "OVERCASTDARK_native3", false},
+		    WeatherVariantEntry{"OVERCASTDARK", "OVERCASTDARK_STD1", false},
+		    WeatherVariantEntry{"SHOWER", "SHOWER_finale2", false},
+		    WeatherVariantEntry{"SHOWER", "SHOWER_guama", false},
+		    WeatherVariantEntry{"SHOWER", "shower_MP_Pred", false},
+		    WeatherVariantEntry{"SNOW", "SNOW_Odriscolls1", false},
+		    WeatherVariantEntry{"SNOW", "SNOW_Pearson1", false},
+		    WeatherVariantEntry{"SNOWLIGHT", "SNOWLIGHT_finale2", false},
+		    WeatherVariantEntry{"SNOWLIGHT", "SNOWLIGHT_Odriscolls1", false},
+		    WeatherVariantEntry{"SNOWLIGHT", "SNOWLIGHT_Pearson1", false},
+		    WeatherVariantEntry{"SUNNY", "Sunny_odriscols4", false},
+		    WeatherVariantEntry{"THUNDERSTORM", "THUNDERSTORM_MP_Pred", false},
+		    WeatherVariantEntry{"THUNDERSTORM", "THUNDERSTORM_nativeSon3", false},
+		    WeatherVariantEntry{"WHITEOUT", "WHITEOUT_winter1", false},
+		    WeatherVariantEntry{"SNOWCLEARING", "SNOWCLEARING_mud1", true},
+		    WeatherVariantEntry{"SNOWCLEARING", "SNOWCLEARING_winter4", true},
+		};
+
+		constexpr std::uint64_t kSetWeatherType = 0x59174F1AFE095B5AULL;
+		constexpr std::uint64_t kSetWeatherVariation = 0x3373779BAF7CAF48ULL;
+		constexpr std::uint64_t kClearWeatherVariation = 0x0E71C80FA4EC8147ULL;
+		std::string g_ActiveVariantType;
+
 		const char* WeatherLabel(const WeatherEntry& entry)
 		{
 			return Localization::IsPortuguese() ? entry.Pt : entry.En;
 		}
 
-		void ApplyWeather(int index)
+		template<typename... Args>
+		bool CallNative(std::uint64_t hash, Args&&... args)
 		{
-			index = std::clamp(index, 0, static_cast<int>(kWeatherEntries.size()) - 1);
-			const std::string weather = kWeatherEntries[index].Id;
+			if (!Pointers.GetNativeHandler)
+				return false;
+
+			auto handler = Pointers.GetNativeHandler(static_cast<rage::scrNativeHash>(hash));
+			if (!handler)
+				return false;
+
+			CustomCallContext context{};
+			context.reset();
+			(context.PushArg(std::forward<Args>(args)), ...);
+			handler(&context);
+			return true;
+		}
+
+		void ClearActiveVariant()
+		{
+			if (g_ActiveVariantType.empty())
+				return;
+			CallNative(kClearWeatherVariation, g_ActiveVariantType.c_str(), true);
+			g_ActiveVariantType.clear();
+		}
+
+		void ApplyWeather(const char* id)
+		{
+			const std::string weather = id;
 			FiberPool::Push([weather] {
+				ClearActiveVariant();
+				MISC::CLEAR_OVERRIDE_WEATHER();
 				MISC::_SET_OVERRIDE_WEATHER(MISC::GET_HASH_KEY(weather.c_str()));
 				Notifications::Show("Tenebris",
 				    Localization::IsPortuguese() ? "Clima aplicado." : "Weather applied.",
@@ -63,9 +144,40 @@ namespace YimMenu::Submenus
 			});
 		}
 
+		void ApplyVariant(const WeatherVariantEntry& entry)
+		{
+			const std::string type = entry.Type;
+			const std::string variant = entry.Variant;
+			FiberPool::Push([type, variant] {
+				ClearActiveVariant();
+				MISC::CLEAR_OVERRIDE_WEATHER();
+
+				const bool variationOk = CallNative(kSetWeatherVariation, type.c_str(), variant.c_str());
+				const bool typeOk = CallNative(kSetWeatherType,
+				    MISC::GET_HASH_KEY(type.c_str()), true, true, true, 3.0f, false);
+
+				if (variationOk && typeOk)
+				{
+					g_ActiveVariantType = type;
+					Notifications::Show("Tenebris",
+					    Localization::IsPortuguese() ? "Variante de clima aplicada." : "Weather variation applied.",
+					    NotificationType::Success,
+					    2200);
+				}
+				else
+				{
+					Notifications::Show("Tenebris",
+					    Localization::IsPortuguese() ? "Não foi possível aplicar esta variante." : "Could not apply this weather variation.",
+					    NotificationType::Warning,
+					    2600);
+				}
+			});
+		}
+
 		void RestoreWeather()
 		{
 			FiberPool::Push([] {
+				ClearActiveVariant();
 				MISC::CLEAR_OVERRIDE_WEATHER();
 				Notifications::Show("Tenebris",
 				    Localization::IsPortuguese() ? "Clima restaurado ao controle do jogo." : "Weather restored to game control.",
@@ -74,77 +186,113 @@ namespace YimMenu::Submenus
 			});
 		}
 
-		class WeatherSelectorItem final : public UIItem
+		class WeatherItem final : public UIItem
 		{
 		public:
-			void Draw() override
+			explicit WeatherItem(const WeatherEntry& entry) : m_Entry(entry)
 			{
-				ImGui::TextDisabled("%s", Localization::IsPortuguese()
-				        ? "Selecione um clima e pressione Enter ou Aplicar."
-				        : "Select a weather type and press Enter or Apply.");
-				ImGui::Separator();
-				if (ImGui::BeginChild("##weather_list", ImVec2(0.0f, 420.0f), true))
-				{
-					for (int i = 0; i < static_cast<int>(kWeatherEntries.size()); ++i)
-					{
-						const auto& entry = kWeatherEntries[i];
-						const std::string row = std::string(WeatherLabel(entry)) + "##" + entry.Id;
-						if (ImGui::Selectable(row.c_str(), m_Selected == i))
-							m_Selected = i;
-						if (m_Selected == i && m_ScrollSelected)
-						{
-							ImGui::SetScrollHereY(0.5f);
-							m_ScrollSelected = false;
-						}
-					}
-				}
-				ImGui::EndChild();
-				ImGui::TextDisabled("ID: %s", kWeatherEntries[m_Selected].Id);
-				if (ImGui::Button(Localization::IsPortuguese() ? "Aplicar" : "Apply", ImVec2(-FLT_MIN, 0.0f)))
-					ApplyWeather(m_Selected);
-				if (ImGui::Button(Localization::IsPortuguese() ? "Restaurar" : "Restore", ImVec2(-FLT_MIN, 0.0f)))
-					RestoreWeather();
 			}
 
-			std::string_view GetMenuLabel() const override { return "Clima do mundo"; }
+			std::string_view GetMenuLabel() const override
+			{
+				return WeatherLabel(m_Entry);
+			}
+
+			std::string GetMenuValue() const override
+			{
+				return m_Entry.Id;
+			}
+
 			std::string_view GetMenuDescription() const override
 			{
-				return "Mostra todos os climas disponíveis; permite aplicar o selecionado ou devolver o clima ao controle normal do jogo.";
+				return Localization::IsPortuguese() ? "Aplica este clima imediatamente." : "Applies this weather immediately.";
 			}
-			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 610.0f; }
 
-			bool HandleEditorKey(int key) override
+			void HandleMenuAction(MenuAction action) override
 			{
-				const int count = static_cast<int>(kWeatherEntries.size());
-				if (key == VK_UP)
-				{
-					m_Selected = m_Selected <= 0 ? count - 1 : m_Selected - 1;
-					m_ScrollSelected = true;
-					return true;
-				}
-				if (key == VK_DOWN)
-				{
-					m_Selected = (m_Selected + 1) % count;
-					m_ScrollSelected = true;
-					return true;
-				}
-				if (key == VK_RETURN)
-				{
-					ApplyWeather(m_Selected);
-					return true;
-				}
-				return false;
+				if (action == MenuAction::Enter)
+					ApplyWeather(m_Entry.Id);
 			}
 
 		private:
-			int m_Selected = 0;
-			bool m_ScrollSelected = false;
+			WeatherEntry m_Entry;
+		};
+
+		class WeatherVariantItem final : public UIItem
+		{
+		public:
+			explicit WeatherVariantItem(const WeatherVariantEntry& entry) : m_Entry(entry)
+			{
+			}
+
+			std::string_view GetMenuLabel() const override
+			{
+				return m_Entry.Variant;
+			}
+
+			std::string GetMenuValue() const override
+			{
+				if (m_Entry.SinglePlayerOnly)
+					return Localization::IsPortuguese() ? "HISTÓRIA" : "STORY";
+				return {};
+			}
+
+			std::string_view GetMenuDescription() const override
+			{
+				return m_Entry.SinglePlayerOnly
+				    ? (Localization::IsPortuguese() ? "Variante documentada como exclusiva do modo História." : "Variation documented as Story Mode only.")
+				    : (Localization::IsPortuguese() ? "Aplica esta variante de clima." : "Applies this weather variation.");
+			}
+
+			void HandleMenuAction(MenuAction action) override
+			{
+				if (action == MenuAction::Enter)
+					ApplyVariant(m_Entry);
+			}
+
+		private:
+			WeatherVariantEntry m_Entry;
+		};
+
+		class WeatherSectionItem final : public UIItem
+		{
+		public:
+			std::string_view GetMenuLabel() const override
+			{
+				return Localization::IsPortuguese() ? "--- Variantes de clima ---" : "--- Weather variants ---";
+			}
+
+			std::string_view GetMenuDescription() const override
+			{
+				return Localization::IsPortuguese() ? "Lista completa de variantes documentadas." : "Complete list of documented weather variations.";
+			}
+		};
+
+		class RestoreWeatherItem final : public UIItem
+		{
+		public:
+			std::string_view GetMenuLabel() const override
+			{
+				return Localization::IsPortuguese() ? "Restaurar clima automático" : "Restore automatic weather";
+			}
+
+			void HandleMenuAction(MenuAction action) override
+			{
+				if (action == MenuAction::Enter)
+					RestoreWeather();
+			}
 		};
 	}
 
 	std::shared_ptr<UIItem> CreateWeatherSelectorItem()
 	{
-		return std::make_shared<WeatherSelectorItem>();
+		auto list = std::make_shared<Group>("", 1);
+		for (const auto& weather : kWeatherEntries)
+			list->AddItem(std::make_shared<WeatherItem>(weather));
+		list->AddItem(std::make_shared<RestoreWeatherItem>());
+		list->AddItem(std::make_shared<WeatherSectionItem>());
+		for (const auto& variant : kWeatherVariants)
+			list->AddItem(std::make_shared<WeatherVariantItem>(variant));
+		return list;
 	}
 }

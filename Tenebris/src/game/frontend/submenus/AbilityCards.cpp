@@ -4,7 +4,6 @@
 #include "core/frontend/manager/Category.hpp"
 #include "core/frontend/manager/Submenu.hpp"
 #include "core/frontend/manager/UIItem.hpp"
-#include "game/backend/Self.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Natives.hpp"
@@ -36,8 +35,6 @@ namespace YimMenu
 			const char* MechanicsEn;
 		};
 
-		// Public RDO cards only. The internal OVERRIDE_REVENGE_SLOW_TIME entry is
-		// intentionally not exposed as a selectable card.
 		constexpr std::array<AbilityCardDefinition, 33> kCards{{
 		    {AbilityType::A_MOMENT_TO_RECUPERATE, true, "Um Momento para se Recuperar", "A Moment to Recuperate",
 		        "Regenera vida durante o Olho da Morte; normalmente receber dano interrompe o efeito.",
@@ -149,10 +146,6 @@ namespace YimMenu
 		std::array<std::atomic<std::uint32_t>, 4> g_OverrideAbility{};
 		std::array<std::atomic_bool, 4> g_OverrideEnabled{};
 		std::array<std::atomic_bool, 4> g_RestorePending{};
-
-		std::atomic_bool g_PaintItBlackAutoTag{false};
-		std::atomic_int g_PaintItBlackTargetMode{7}; // 6 enemies, 7 all, 8 animals
-		std::atomic_bool g_MomentIgnoreDamageCancel{false};
 
 		const AbilityCardDefinition* FindCard(std::uint32_t hash)
 		{
@@ -266,53 +259,6 @@ namespace YimMenu
 			return haystack.find(needle) != std::string::npos;
 		}
 
-		void RenderVerifiedModifiers(std::uint32_t abilityHash)
-		{
-			ImGui::SeparatorText(Localization::IsPortuguese() ? "Parâmetros verificados" : "Verified parameters");
-
-			if (abilityHash == static_cast<std::uint32_t>(AbilityType::PAINT_IT_BLACK))
-			{
-				bool autoTag = g_PaintItBlackAutoTag.load();
-				if (ImGui::Checkbox(Localization::IsPortuguese() ? "Marcação automática" : "Automatic tagging", &autoTag))
-					g_PaintItBlackAutoTag.store(autoTag);
-
-				const char* modesPt[] = {"Inimigos", "Todos", "Animais"};
-				const char* modesEn[] = {"Enemies", "All", "Animals"};
-				int raw = g_PaintItBlackTargetMode.load();
-				int index = raw == 6 ? 0 : raw == 8 ? 2 : 1;
-				const char** modes = Localization::IsPortuguese() ? modesPt : modesEn;
-				if (ImGui::Combo(Localization::IsPortuguese() ? "Alvos" : "Targets", &index, modes, 3))
-					g_PaintItBlackTargetMode.store(index == 0 ? 6 : index == 2 ? 8 : 7);
-				ImGui::TextWrapped("%s", Localization::IsPortuguese()
-				    ? "Usa as natives de marcação de Dead Eye já presentes no Tenebris. Não altera o tier da carta."
-				    : "Uses Dead Eye tagging natives already present in Tenebris. It does not alter the card tier.");
-				return;
-			}
-
-			if (abilityHash == static_cast<std::uint32_t>(AbilityType::A_MOMENT_TO_RECUPERATE))
-			{
-				bool keepActive = g_MomentIgnoreDamageCancel.load();
-				if (ImGui::Checkbox(Localization::IsPortuguese() ? "Não cancelar ao receber dano" : "Do not cancel when taking damage", &keepActive))
-					g_MomentIgnoreDamageCancel.store(keepActive);
-				ImGui::TextWrapped("%s", Localization::IsPortuguese()
-				    ? "Controla diretamente a flag de persona usada pelo próprio jogo para sair do Dead Eye ao sofrer dano."
-				    : "Directly controls the persona flag used by the game to exit Dead Eye after taking damage.");
-				return;
-			}
-
-			if (abilityHash == static_cast<std::uint32_t>(AbilityType::NEVER_WITHOUT_ONE))
-			{
-				ImGui::TextWrapped("%s", Localization::IsPortuguese()
-				    ? "Cabeça Coberta depende do estado do chapéu e do bloqueio do headshot. Não foi criado slider de porcentagem porque isso não representa o mecanismo real da carta."
-				    : "Never Without One depends on hat state and headshot blocking. No percentage slider is exposed because that would not represent the card's real mechanism.");
-				return;
-			}
-
-			ImGui::TextDisabled("%s", Localization::IsPortuguese()
-			    ? "Nenhum parâmetro adicional foi mapeado com segurança."
-			    : "No additional parameter has been safely mapped.");
-		}
-
 		class AbilitySlotItem final : public UIItem
 		{
 		public:
@@ -338,22 +284,13 @@ namespace YimMenu
 				ImGui::TextWrapped("%s: %s  |  %s %s",
 				    Localization::IsPortuguese() ? "Carta atual" : "Current card",
 				    currentName.c_str(),
-				    Localization::IsPortuguese() ? "Tier" : "Tier",
+				    "Tier",
 				    TierLabel(tier).c_str());
 
 				if (g_OverrideEnabled[m_Slot].load())
 				{
-					ImGui::TextDisabled("%s", Localization::IsPortuguese()
-					    ? "Substituição do Tenebris ativa. O valor de tier/progressão do jogo permanece intacto."
-					    : "Tenebris runtime replacement is active. The game's tier/progression value remains untouched.");
 					if (ImGui::Button(Localization::IsPortuguese() ? "Restaurar carta do jogo" : "Restore game card"))
 						RestoreGameSlot(m_Slot);
-				}
-				else
-				{
-					ImGui::TextDisabled("%s", Localization::IsPortuguese()
-					    ? "Usando o loadout real lido do jogador."
-					    : "Using the player's real loadout value.");
 				}
 
 				ImGui::SeparatorText(Localization::IsPortuguese() ? "Escolher carta" : "Choose card");
@@ -388,7 +325,6 @@ namespace YimMenu
 				{
 					ImGui::SeparatorText(Localization::IsPortuguese() ? "Mecânica da carta" : "Card mechanics");
 					ImGui::TextWrapped("%s", CardMechanics(*selectedCard));
-					RenderVerifiedModifiers(selectedHash);
 				}
 			}
 
@@ -408,8 +344,8 @@ namespace YimMenu
 			std::string_view GetMenuDescription() const override
 			{
 				return Localization::IsPortuguese()
-				    ? "Lê a carta equipada e permite uma substituição local em tempo de execução sem comprar, evoluir ou alterar o tier."
-				    : "Reads the equipped card and allows a local runtime replacement without buying, upgrading, or altering its tier.";
+				    ? "Lê a carta equipada e permite uma substituição local em tempo de execução."
+				    : "Reads the equipped card and allows a local runtime replacement.";
 			}
 
 			bool RequiresImGuiEditor() const override
@@ -419,7 +355,7 @@ namespace YimMenu
 
 			float GetPreferredEditorHeight() const override
 			{
-				return 690.0f;
+				return 590.0f;
 			}
 
 			bool HandleEditorKey(int key) override
@@ -458,9 +394,6 @@ namespace YimMenu
 	{
 		void Tick()
 		{
-			static bool paintItBlackApplied = false;
-			static bool momentFlagApplied = false;
-
 			if (!g_Running || !Pointers.IsSessionStarted || !*Pointers.IsSessionStarted)
 				return;
 
@@ -495,38 +428,6 @@ namespace YimMenu
 					g_GameAbility[slot].store(static_cast<std::uint32_t>(equipped.Type));
 				}
 				g_CurrentAbility[slot].store(static_cast<std::uint32_t>(equipped.Type));
-			}
-
-			const auto activeAbility = g_CurrentAbility[0].load();
-			const bool deadEyeActive = PLAYER::_IS_SPECIAL_ABILITY_ACTIVE(playerId);
-
-			const bool shouldAutoTag = deadEyeActive
-			    && activeAbility == static_cast<std::uint32_t>(AbilityType::PAINT_IT_BLACK)
-			    && g_PaintItBlackAutoTag.load();
-			if (shouldAutoTag)
-			{
-				PLAYER::_SET_DEADEYE_TAGGING_CONFIG(playerId, g_PaintItBlackTargetMode.load());
-				PLAYER::_SET_DEADEYE_TAGGING_ENABLED(playerId, true);
-				paintItBlackApplied = true;
-			}
-			else if (paintItBlackApplied)
-			{
-				PLAYER::_SET_DEADEYE_TAGGING_ENABLED(playerId, false);
-				paintItBlackApplied = false;
-			}
-
-			const bool shouldIgnoreDamageCancel = deadEyeActive
-			    && activeAbility == static_cast<std::uint32_t>(AbilityType::A_MOMENT_TO_RECUPERATE)
-			    && g_MomentIgnoreDamageCancel.load();
-			if (shouldIgnoreDamageCancel)
-			{
-				PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(ePersonaAbilityFlag::PERSONA_EXIT_DEADEYE_ON_TAKING_DAMAGE, false);
-				momentFlagApplied = true;
-			}
-			else if (momentFlagApplied)
-			{
-				PLAYER::_SET_LOCAL_PLAYER_PERSONA_ABILITY_FLAG(ePersonaAbilityFlag::PERSONA_EXIT_DEADEYE_ON_TAKING_DAMAGE, true);
-				momentFlagApplied = false;
 			}
 		}
 	}
