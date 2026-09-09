@@ -1,6 +1,5 @@
 #include "Notifications.hpp"
 
-#include "core/logger/LogHelper.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "util/Joaat.hpp"
 
@@ -15,14 +14,11 @@ namespace YimMenu
 		{
 			if (requested != NotificationPlacement::Left)
 				return requested;
-
 			if (title == "Protections" || title == "Protection" || title == "Proteções" || title == "Proteção")
 				return NotificationPlacement::Right;
-
 			if (title == "Teleport" || title == "Teleporte" || title == "Waypoint" || title == "Camp" ||
 			    title == "Moonshine Shack" || title == "Madam Nazar" || title == "Guarma")
 				return NotificationPlacement::TopCenter;
-
 			return requested;
 		}
 	}
@@ -158,6 +154,9 @@ namespace YimMenu
 		std::vector<std::string> keysToErase;
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
+			if (m_Notifications.empty())
+				return;
+
 			int leftPosition = 0;
 			int centerPosition = 0;
 			int rightPosition = 0;
@@ -199,6 +198,8 @@ namespace YimMenu
 			}
 		}
 
+		if (keysToErase.empty())
+			return;
 		std::lock_guard<std::mutex> lock(m_mutex);
 		for (const auto& key : keysToErase)
 			m_Notifications.erase(key);

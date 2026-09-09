@@ -4,9 +4,8 @@
 #include "core/frontend/manager/AdvancedEditor.hpp"
 #include "core/frontend/manager/UIManager.hpp"
 #include "core/renderer/Renderer.hpp"
-#include "game/backend/FiberPool.hpp"
-#include "game/backend/ScriptMgr.hpp"
 #include "game/frontend/fonts/Fonts.hpp"
+#include "game/frontend/items/Items.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "submenus/AbilityCardPower.hpp"
 #include "submenus/AbilityCards.hpp"
@@ -21,7 +20,6 @@
 #include "submenus/World.hpp"
 
 #include <Windows.h>
-#include <algorithm>
 #include <vector>
 
 #pragma comment(lib, "Version.lib")
@@ -57,6 +55,24 @@ namespace YimMenu
 			    HIWORD(versionInfo->dwFileVersionLS),
 			    LOWORD(versionInfo->dwFileVersionLS));
 		}
+
+		void AddSelfShortcuts(const std::shared_ptr<Submenu>& submenu)
+		{
+			for (auto& category : submenu->m_Categories)
+			{
+				if (!category)
+					continue;
+				if (category->m_Name == "Principal")
+				{
+					category->PrependItem(std::make_shared<CommandItem>("maximumhostility"_J, "Aplicar nível de procurado"));
+				}
+				else if (category->m_Name == "Armas")
+				{
+					category->PrependItem(std::make_shared<CommandItem>("giveallammo"_J, "Dar munição"));
+					category->PrependItem(std::make_shared<CommandItem>("giveallweapons"_J, "Dar armas"));
+				}
+			}
+		}
 	}
 
 	static YimMenu::Submenus::Settings g_SettingsInstance;
@@ -66,11 +82,10 @@ namespace YimMenu
 		g_SettingsInstance.LoadSettings();
 
 		auto selfSubmenu = std::make_shared<Submenus::Self>();
-		// The old clothes/face/eyebrow/voice editor is intentionally not installed;
-		// the Self UI exposes the ability-card editor instead.
 		Submenus::InstallAbilityCards(selfSubmenu);
 		Submenus::InstallAbilityCardPower(selfSubmenu);
 		Submenus::InstallHorseBonding(selfSubmenu);
+		AddSelfShortcuts(selfSubmenu);
 		UIManager::AddSubmenu(std::move(selfSubmenu));
 		UIManager::AddSubmenu(std::make_shared<Submenus::Teleport>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Network>());
@@ -84,8 +99,6 @@ namespace YimMenu
 		    [] {
 			    if (!GUI::IsOpen())
 			    {
-				    // Sem o menu sendo renderizado nao existe frame para concluir o fade;
-				    // por isso o fechamento global precisa finalizar o editor de imediato.
 				    AdvancedEditor::CloseImmediate();
 				    return;
 			    }
@@ -151,9 +164,6 @@ namespace YimMenu
 		ImFontConfig FontCfg{};
 		FontCfg.FontDataOwnedByAtlas = false;
 
-		// Volta a usar a fonte incorporada original do projeto em vez de Georgia.
-		// O peso visual extra e aplicado no renderer com uma segunda passagem
-		// subpixel, mantendo o desenho antigo sem depender das fontes do Windows.
 		Menu::Font::g_DefaultFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
 		Menu::Font::g_OptionsFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
 		Menu::Font::g_ChildTitleFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);

@@ -22,6 +22,9 @@ namespace YimMenu
 		TransitionPhase g_Phase = TransitionPhase::Closed;
 		float g_EditorAlpha{};
 		float g_SlideProgress{};
+		ImVec2 g_EditorSize{};
+		bool g_HasEditorSize{};
+		bool g_ApplyEditorSize{true};
 
 		float SmoothStep(float value)
 		{
@@ -60,24 +63,24 @@ namespace YimMenu
 		g_Phase = TransitionPhase::Opening;
 		g_EditorAlpha = 0.0f;
 		g_SlideProgress = 0.0f;
+		g_ApplyEditorSize = true;
 	}
 
 	void AdvancedEditor::Close()
 	{
 		if (!g_Item || g_Phase == TransitionPhase::Closing)
 			return;
-
-		// O editor permanece no lado esquerdo durante a saida. Apenas a opacidade
-		// diminui enquanto o menu classico reaparece no mesmo lugar.
 		g_Phase = TransitionPhase::Closing;
 		g_SlideProgress = 1.0f;
 	}
 
 	void AdvancedEditor::CloseImmediate()
 	{
-		if (!g_Item)
-			return;
-		FinishClose();
+		if (g_Item)
+			FinishClose();
+		g_EditorSize = {};
+		g_HasEditorSize = false;
+		g_ApplyEditorSize = true;
 	}
 
 	void AdvancedEditor::Tick()
@@ -117,18 +120,13 @@ namespace YimMenu
 	{
 		if (!g_Item)
 			return false;
-
-		// Enquanto o fade de saida esta acontecendo, consome a entrada para nao
-		// acionar acidentalmente uma opcao do menu que esta reaparecendo.
 		if (g_Phase == TransitionPhase::Closing)
 			return true;
-
 		if (key == VK_BACK || key == VK_ESCAPE)
 		{
 			Close();
 			return true;
 		}
-
 		return g_Item->HandleEditorKey(key);
 	}
 
@@ -146,23 +144,22 @@ namespace YimMenu
 		const ImVec2 origin = viewport->WorkPos;
 		const float gap = std::clamp(display.x * 0.0125f, 8.0f, 14.0f);
 		const auto classicLayout = GetResponsiveMenuLayout();
-
-		const float desiredWidth = std::clamp(display.x * 0.32f, 300.0f, 410.0f);
-		const float editorWidth = std::min(desiredWidth, display.x - gap * 2.0f);
-		const float availableHeight = std::max(180.0f, display.y - gap * 2.0f);
-		const float desiredHeight = g_Item->GetPreferredEditorHeight();
-		const float editorHeight = std::clamp(desiredHeight, 180.0f, availableHeight);
-
-		const float rightX = origin.x + display.x - editorWidth - gap;
+		const float defaultWidth = std::min(std::clamp(display.x * 0.32f, 300.0f, 410.0f), display.x - gap * 2.0f);
+		const float maxHeight = std::max(180.0f, display.y - gap * 2.0f);
+		const float defaultHeight = std::clamp(g_Item->GetPreferredEditorHeight(), 180.0f, maxHeight);
+		const float rightX = origin.x + display.x - defaultWidth - gap;
 		const float leftX = classicLayout.X;
 		const float slide = SmoothStep(g_SlideProgress);
 		const float editorX = rightX + (leftX - rightX) * slide;
+		const ImVec2 defaultSize(defaultWidth, defaultHeight);
 		const ImVec2 editorPosition(editorX, origin.y + gap);
-		const ImVec2 editorSize(editorWidth, editorHeight);
 		const float alpha = GetEditorAlpha();
 
-		ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(editorSize, ImGuiCond_Always);
+		if (g_Phase != TransitionPhase::Open)
+			ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
+		if (g_ApplyEditorSize)
+			ImGui::SetNextWindowSize(g_HasEditorSize ? g_EditorSize : defaultSize, ImGuiCond_Always);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(260.0f, 180.0f), ImVec2(display.x - gap * 2.0f, maxHeight));
 		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -172,10 +169,12 @@ namespace YimMenu
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.96f));
 		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.30f, 0.055f, 1.0f));
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.13f, 0.19f, 0.043f, 1.0f));
-		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
+		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
 		{
+			g_EditorSize = ImGui::GetWindowSize();
+			g_HasEditorSize = true;
+			g_ApplyEditorSize = false;
 			ImGui::SetWindowFontScale(0.92f);
-
 			ImGui::TextUnformatted("EDITOR AVANCADO DO TENEBRIS");
 			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
 			if (ImGui::SmallButton("X"))
