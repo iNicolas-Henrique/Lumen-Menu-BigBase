@@ -28,6 +28,12 @@ namespace YimMenu
 			return ImGui::ColorConvertFloat4ToU32(c);
 		}
 
+		float SmoothStep(float value)
+		{
+			value = std::clamp(value, 0.0f, 1.0f);
+			return value * value * (3.0f - 2.0f * value);
+		}
+
 		void DrawText(ImDrawList* drawList, const ImVec2& position, ImU32 color, std::string_view text, float scale)
 		{
 			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, position, color, text.data(), text.data() + text.size());
@@ -66,33 +72,57 @@ namespace YimMenu
 			FiberPool::Push([sound] { AUDIO::PLAY_SOUND_FRONTEND(sound, "HUD_PLAYER_MENU", 1, 0); });
 		}
 
-		void DrawHeaderLightning(ImDrawList* drawList, float time, float x, float y, float width, float height, float alpha)
+		void DrawHeaderPulseWave(ImDrawList* drawList, float time, float x, float y, float width, float height, float alpha)
 		{
-			constexpr int segments = 8;
-			ImVec2 prev(x + 3.0f, y + height * (0.52f + std::sin(time * 1.8f) * 0.025f));
-			const ImU32 glow = ApplyAlpha(IM_COL32(146, 210, 63, 72), alpha);
-			const ImU32 core = ApplyAlpha(IM_COL32(198, 239, 105, 145), alpha);
+			// A clean audio-wave trace. Every five seconds it migrates to a new
+			// vertical lane with interpolation instead of teleporting.
+			constexpr int segments = 56;
+			constexpr float changeEvery = 5.0f;
+			constexpr float transitionTime = 1.15f;
+			constexpr std::array<float, 4> lanes{0.24f, 0.40f, 0.61f, 0.76f};
+
+			const int cycle = static_cast<int>(std::floor(time / changeEvery));
+			const float local = std::fmod(time, changeEvery);
+			const float fromLane = lanes[static_cast<std::size_t>((cycle + static_cast<int>(lanes.size()) - 1) % static_cast<int>(lanes.size()))];
+			const float toLane = lanes[static_cast<std::size_t>(cycle % static_cast<int>(lanes.size()))];
+			const float move = SmoothStep(local / transitionTime);
+			const float center = fromLane + (toLane - fromLane) * move;
+			const float breathe = 0.82f + 0.18f * std::sin(time * 2.2f);
+			const float amplitude = height * 0.115f * breathe;
+
+			const ImU32 outerGlow = ApplyAlpha(IM_COL32(154, 221, 79, 40), alpha);
+			const ImU32 midGlow = ApplyAlpha(IM_COL32(190, 236, 102, 82), alpha);
+			const ImU32 core = ApplyAlpha(IM_COL32(225, 250, 157, 190), alpha);
 
 			drawList->PushClipRect(ImVec2(x, y), ImVec2(x + width, y + height), true);
+			ImVec2 previous(x + 5.0f, y + height * center);
 			for (int i = 1; i <= segments; ++i)
 			{
-				const float p = static_cast<float>(i) / segments;
-				const float wave = std::sin(time * 2.3f + i * 1.71f) * 0.065f;
-				const float jitter = std::sin(time * 5.4f + i * 2.37f) * 0.025f;
-				const ImVec2 next(x + 3.0f + (width - 6.0f) * p, y + height * (0.52f + wave + jitter));
-				drawList->AddLine(prev, next, glow, 3.0f);
-				drawList->AddLine(prev, next, core, 1.0f);
-				prev = next;
+				const float p = static_cast<float>(i) / static_cast<float>(segments);
+				const float envelope = 0.28f + 0.72f * std::pow(std::sin(p * 3.14159265f), 1.35f);
+				const float carrier = std::sin(p * 31.0f + time * 3.15f);
+				const float harmonic = std::sin(p * 67.0f - time * 2.05f) * 0.33f;
+				const float slow = std::sin(p * 8.0f + time * 1.1f) * 0.22f;
+				const float displacement = (carrier * 0.62f + harmonic + slow) * amplitude * envelope;
+				const ImVec2 next(x + 5.0f + (width - 10.0f) * p, y + height * center + displacement);
+				drawList->AddLine(previous, next, outerGlow, 6.0f);
+				drawList->AddLine(previous, next, midGlow, 3.0f);
+				drawList->AddLine(previous, next, core, 1.15f);
+				previous = next;
 			}
 			drawList->PopClipRect();
 		}
 
 		bool HiddenClassicItem(std::string_view label)
 		{
-			return label == "Entregar armas e munição" || label == "Entregar armas e municao" ||
+			return label.empty() ||
+			       label == "Entregar armas e munição" || label == "Entregar armas e municao" ||
 			       label == "Nível máximo de procurado" || label == "Nivel maximo de procurado" ||
 			       label == "Sem nível de procurado" || label == "Sem nivel de procurado" ||
-			       label == "Remover procurado";
+			       label == "Remover procurado" ||
+			       label == "Olho da Morte clássico" || label == "Classic Dead Eye" ||
+			       label == "Deadeye Auto-Tagging" || label == "Alvos automáticos do Olho da Morte" ||
+			       label == "Unlock Deadeye Abilities + Weak Spots";
 		}
 	}
 
@@ -269,7 +299,7 @@ namespace YimMenu
 			const ImU32 headerBR = C(ImGui::ColorConvertFloat4ToU32(ImVec4((25.0f + 13.0f * pulse) / 255.0f, (57.0f + 21.0f * pulse) / 255.0f, (10.0f + 6.0f * pulse) / 255.0f, 1.0f)));
 			const ImU32 headerBL = C(ImGui::ColorConvertFloat4ToU32(ImVec4((8.0f + 4.0f * sweep) / 255.0f, (18.0f + 9.0f * sweep) / 255.0f, 5.0f / 255.0f, 1.0f)));
 			drawList->AddRectFilledMultiColor(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kHeaderHeight), headerTL, headerTR, headerBR, headerBL);
-			DrawHeaderLightning(drawList, time, kMenuX, y, kMenuWidth, kHeaderHeight, classicAlpha);
+			DrawHeaderPulseWave(drawList, time, kMenuX, y, kMenuWidth, kHeaderHeight, classicAlpha);
 
 			std::string headerText = "TENEBRIS";
 			if (m_Level == Level::ConfirmShutdown)
