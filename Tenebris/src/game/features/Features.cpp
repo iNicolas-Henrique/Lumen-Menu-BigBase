@@ -10,8 +10,6 @@
 #include "game/backend/Self.hpp"
 #include "game/frontend/ContextMenu.hpp"
 #include "game/frontend/GUI.hpp"
-#include "game/frontend/submenus/AbilityCardPower.hpp"
-#include "game/frontend/submenus/AbilityCards.hpp"
 #include "game/rdr/Enums.hpp"
 #include "game/rdr/Natives.hpp"
 
@@ -60,9 +58,7 @@ namespace YimMenu
 
 	void FeatureLoop()
 	{
-		using clock = std::chrono::steady_clock;
 		Commands::EnableBoolCommands();
-		auto nextAbilityTick = clock::time_point{};
 
 		while (true)
 		{
@@ -75,14 +71,6 @@ namespace YimMenu
 				if (GetForegroundWindow() == *Pointers.Hwnd && !HUD::IS_PAUSE_MENU_ACTIVE() && !GUI::IsOpen())
 					g_HotkeySystem.Update();
 				Self::Update();
-
-				const auto now = clock::now();
-				if (now >= nextAbilityTick)
-				{
-					AbilityCards::Tick();
-					AbilityCardPower::Tick();
-					nextAbilityTick = now + std::chrono::milliseconds(50);
-				}
 			}
 			ScriptMgr::Yield();
 		}
