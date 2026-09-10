@@ -24,7 +24,7 @@ namespace YimMenu::Features
             if (ENTITY::GET_ENTITY_MODEL(ped) != selfModel)
                 return false;
 
-            return ENTITY::GET_ENTITY_MAX_HEALTH(ped, false) == 600;
+            return ENTITY::GET_ENTITY_MAX_HEALTH(ped, false) == 800;
         }
 
         static void MakeImplacable(int ped, int selfHandle)
