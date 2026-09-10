@@ -124,7 +124,12 @@ namespace YimMenu::Submenus
 			if (!playerName || !*playerName)
 				return;
 
-			PED::_SET_PED_PROMPT_NAME(clone, MISC::VAR_STRING(10, "LITERAL_STRING", playerName));
+			// NativeInvoker stores each argument in a 64-bit slot. Passing the string
+			// literal directly deduces char[15], which trips its sizeof(T) assertion.
+			// Force pointer semantics, matching the VAR_STRING calls already used by
+			// the project's native drawing code.
+			const char* literalString = "LITERAL_STRING";
+			PED::_SET_PED_PROMPT_NAME(clone, MISC::VAR_STRING(10, literalString, playerName));
 			LOG(INFO) << "[ManualClone] prompt name set to local player: " << playerName;
 		}
 
