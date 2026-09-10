@@ -142,31 +142,35 @@ namespace YimMenu
 
 		const ImVec2 display = viewport->WorkSize;
 		const ImVec2 origin = viewport->WorkPos;
-		const float gap = std::clamp(display.x * 0.0125f, 8.0f, 14.0f);
+		const float gap = std::clamp(display.x * 0.018f, 10.0f, 22.0f);
 		const auto classicLayout = GetResponsiveMenuLayout();
-		const float defaultWidth = std::min(std::clamp(display.x * 0.32f, 300.0f, 410.0f), display.x - gap * 2.0f);
-		const float maxHeight = std::max(180.0f, display.y - gap * 2.0f);
-		const float defaultHeight = std::clamp(g_Item->GetPreferredEditorHeight(), 180.0f, maxHeight);
-		const float rightX = origin.x + display.x - defaultWidth - gap;
-		const float leftX = classicLayout.X;
+
+		// Editors intentionally open large by default. At 1280x720 this is roughly
+		// the same visual footprint as the reference animation/music window.
+		const float defaultWidth = std::clamp(display.x * 0.84f, 650.0f, display.x - gap * 2.0f);
+		const float maxHeight = std::max(280.0f, display.y - gap * 2.0f);
+		const float requestedHeight = std::max(g_Item->GetPreferredEditorHeight(), display.y * 0.78f);
+		const float defaultHeight = std::clamp(requestedHeight, 420.0f, maxHeight);
+		const float centeredX = origin.x + (display.x - defaultWidth) * 0.5f;
+		const float offscreenX = origin.x + display.x + gap;
 		const float slide = SmoothStep(g_SlideProgress);
-		const float editorX = rightX + (leftX - rightX) * slide;
+		const float editorX = offscreenX + (centeredX - offscreenX) * slide;
 		const ImVec2 defaultSize(defaultWidth, defaultHeight);
-		const ImVec2 editorPosition(editorX, origin.y + gap);
+		const ImVec2 editorPosition(editorX, origin.y + (display.y - defaultHeight) * 0.5f);
 		const float alpha = GetEditorAlpha();
 
 		if (g_Phase != TransitionPhase::Open)
 			ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
 		if (g_ApplyEditorSize)
 			ImGui::SetNextWindowSize(g_HasEditorSize ? g_EditorSize : defaultSize, ImGuiCond_Always);
-		ImGui::SetNextWindowSizeConstraints(ImVec2(260.0f, 180.0f), ImVec2(display.x - gap * 2.0f, maxHeight));
+		ImGui::SetNextWindowSizeConstraints(ImVec2(620.0f, 400.0f), ImVec2(display.x - gap * 2.0f, maxHeight));
 		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 8.0f));
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 4.0f));
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(7.0f, 4.0f));
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.96f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 7.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(9.0f, 6.0f));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.97f));
 		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.30f, 0.055f, 1.0f));
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.13f, 0.19f, 0.043f, 1.0f));
 		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
@@ -174,16 +178,24 @@ namespace YimMenu
 			g_EditorSize = ImGui::GetWindowSize();
 			g_HasEditorSize = true;
 			g_ApplyEditorSize = false;
-			ImGui::SetWindowFontScale(0.92f);
-			ImGui::TextUnformatted("EDITOR AVANCADO DO TENEBRIS");
+			ImGui::SetWindowFontScale(1.0f);
+
+			const char* brand = "TENEBRIS";
+			const float brandWidth = ImGui::CalcTextSize(brand).x;
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (ImGui::GetWindowWidth() - brandWidth) * 0.5f));
+			ImGui::TextUnformatted(brand);
+
 			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
 			if (ImGui::SmallButton("X"))
 				open = false;
+
+			const std::string subtitle = std::string(g_Item->GetMenuLabel()) + " | BACK: Voltar";
+			const float subtitleWidth = ImGui::CalcTextSize(subtitle.c_str()).x;
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (ImGui::GetWindowWidth() - subtitleWidth) * 0.5f));
+			ImGui::TextDisabled("%s", subtitle.c_str());
 			ImGui::Separator();
-			ImGui::TextDisabled("%s", g_Item->GetMenuLabel().data());
-			ImGui::SameLine();
-			ImGui::TextDisabled("| BACK: voltar");
 			ImGui::Spacing();
+
 			if (ImGui::BeginChild("##TenebrisAdvancedContent", ImVec2(0.0f, 0.0f), false))
 			{
 				ImGui::PushItemWidth(-FLT_MIN);
