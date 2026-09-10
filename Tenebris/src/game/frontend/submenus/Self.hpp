@@ -24,7 +24,4 @@ namespace YimMenu::Submenus
 	};
 
 	void RenderAnimationsCategory();
-
-	void LoadMusicHistory();
-	void SaveMusicHistory();
 }
