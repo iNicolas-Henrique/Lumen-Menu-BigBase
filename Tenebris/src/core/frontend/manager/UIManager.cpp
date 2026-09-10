@@ -75,7 +75,9 @@ namespace YimMenu
 		void DrawHeaderPulseWave(ImDrawList* drawList, float time, float x, float y, float width, float height, float alpha)
 		{
 			// A clean audio-wave trace. Every five seconds it migrates to a new
-			// vertical lane with interpolation instead of teleporting.
+			// vertical lane with interpolation instead of teleporting. The trace now
+			// reaches both header edges while the clip rect guarantees it never draws
+			// outside the menu bounds.
 			constexpr int segments = 56;
 			constexpr float changeEvery = 5.0f;
 			constexpr float transitionTime = 1.15f;
@@ -95,7 +97,7 @@ namespace YimMenu
 			const ImU32 core = ApplyAlpha(IM_COL32(225, 250, 157, 190), alpha);
 
 			drawList->PushClipRect(ImVec2(x, y), ImVec2(x + width, y + height), true);
-			ImVec2 previous(x + 5.0f, y + height * center);
+			ImVec2 previous(x, y + height * center);
 			for (int i = 1; i <= segments; ++i)
 			{
 				const float p = static_cast<float>(i) / static_cast<float>(segments);
@@ -104,7 +106,7 @@ namespace YimMenu
 				const float harmonic = std::sin(p * 67.0f - time * 2.05f) * 0.33f;
 				const float slow = std::sin(p * 8.0f + time * 1.1f) * 0.22f;
 				const float displacement = (carrier * 0.62f + harmonic + slow) * amplitude * envelope;
-				const ImVec2 next(x + 5.0f + (width - 10.0f) * p, y + height * center + displacement);
+				const ImVec2 next(x + width * p, y + height * center + displacement);
 				drawList->AddLine(previous, next, outerGlow, 6.0f);
 				drawList->AddLine(previous, next, midGlow, 3.0f);
 				drawList->AddLine(previous, next, core, 1.15f);
@@ -177,7 +179,6 @@ namespace YimMenu
 		const std::size_t count = GetEntryCount();
 		if (count > 0 && m_Selected >= count)
 			m_Selected = count - 1;
-
 		if (m_Level == Level::ConfirmShutdown && (key == VK_BACK || key == VK_LEFT))
 		{
 			QueueMenuSound("BACK");

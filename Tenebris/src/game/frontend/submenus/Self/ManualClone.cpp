@@ -102,8 +102,30 @@ namespace YimMenu::Submenus
 				return 0;
 			}
 
-			LOG(INFO) << "[ManualClone] appearance copied; handle=" << clone;
+			// RDO freemode characters are MetaPeds. Rebuild the copied variation once
+			// after CLONE_PED_TO_TARGET so the copied head/body/clothes are committed
+			// on the local shell instead of leaving the default bald mp_male/mp_female.
+			PED::_UPDATE_PED_VARIATION(clone, 0, 1, 1, 1, 0);
+			ScriptMgr::Yield();
+
+			if (!ENTITY::DOES_ENTITY_EXIST(clone))
+				return 0;
+
+			LOG(INFO) << "[ManualClone] appearance copied and refreshed; handle=" << clone;
 			return clone;
+		}
+
+		void ApplyLocalPlayerPromptName(int clone)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
+				return;
+
+			const char* playerName = PLAYER::GET_PLAYER_NAME(PLAYER::PLAYER_ID());
+			if (!playerName || !*playerName)
+				return;
+
+			PED::_SET_PED_PROMPT_NAME(clone, MISC::VAR_STRING(10, "LITERAL_STRING", playerName));
+			LOG(INFO) << "[ManualClone] prompt name set to local player: " << playerName;
 		}
 
 		void SpawnManualClone(int weaponIndex)
@@ -134,6 +156,7 @@ namespace YimMenu::Submenus
 			ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(clone, true);
 			ENTITY::SET_ENTITY_MAX_HEALTH(clone, 800);
 			ENTITY::SET_ENTITY_HEALTH(clone, 800, 0);
+			ApplyLocalPlayerPromptName(clone);
 
 			weaponIndex = std::clamp(weaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
 			WEAPON::REMOVE_ALL_PED_WEAPONS(clone, true, true);

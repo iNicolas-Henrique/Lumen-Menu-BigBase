@@ -272,8 +272,9 @@ namespace YimMenu::Features
                 return 0;
             }
 
-            // Copy appearance only after a valid local target exists. This avoids
-            // directly cloning the live player entity, which is the crash-prone path.
+            // Copy the live player's visual state only after a valid local target exists.
+            // Do not randomize a freemode MetaPed after this: outfit presets can also
+            // replace body/head data and are what produced the bald default-looking clone.
             PED::CLONE_PED_TO_TARGET(selfHandle, clone);
             if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
             {
@@ -283,6 +284,11 @@ namespace YimMenu::Features
                 return 0;
             }
 
+            PED::_UPDATE_PED_VARIATION(clone, 0, 1, 1, 1, 0);
+            if (!ENTITY::DOES_ENTITY_EXIST(clone))
+                return 0;
+
+            LOG(INFO) << "[PlayerMustDie] doppelganger appearance copied and refreshed; handle=" << clone;
             return clone;
         }
 
@@ -308,11 +314,8 @@ namespace YimMenu::Features
             ENTITY::SET_ENTITY_MAX_HEALTH(clone, kCloneHealth);
             ENTITY::SET_ENTITY_HEALTH(clone, kCloneHealth, 0);
 
-            // Random outfit variation keeps the doppelganger from always mirroring the exact current look.
-            PED::_SET_RANDOM_OUTFIT_VARIATION(clone, true);
-            if (!ENTITY::DOES_ENTITY_EXIST(clone))
-                return;
-
+            // Keep the exact copied player appearance. Random MetaPed outfit presets
+            // can replace the freemode head/body and produce a bald white default ped.
             ArmRandomly(clone);
             ConfigureFighter(clone, true);
 
@@ -321,8 +324,9 @@ namespace YimMenu::Features
             fighter.Clone = true;
             fighter.Target = ChooseTarget(clone, selfHandle, humans);
             fighter.NextTask = now;
-            fighter.NextVoice = now;
+            fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(1200, 2600));
             fighter.NextHitCheck = now;
+            Retask(fighter, selfHandle, humans, now);
             g_Fighters.push_back(fighter);
             g_Clones.push_back(clone);
             LOG(INFO) << "[PlayerMustDie] doppelganger ready; handle=" << clone;
