@@ -7,14 +7,13 @@
 #include "game/frontend/fonts/Fonts.hpp"
 #include "game/frontend/items/Items.hpp"
 #include "game/pointers/Pointers.hpp"
-#include "submenus/AbilityCardPower.hpp"
-#include "submenus/AbilityCards.hpp"
 #include "submenus/Debug.hpp"
 #include "submenus/HorseBonding.hpp"
 #include "submenus/Network.hpp"
 #include "submenus/Players.hpp"
 #include "submenus/Recovery.hpp"
 #include "submenus/Self.hpp"
+#include "submenus/Self/ManualClone.hpp"
 #include "submenus/Settings.hpp"
 #include "submenus/Teleport.hpp"
 #include "submenus/World.hpp"
@@ -64,6 +63,7 @@ namespace YimMenu
 					continue;
 				if (category->m_Name == "Principal")
 				{
+					category->PrependItem(Submenus::CreateManualCloneItem());
 					category->PrependItem(std::make_shared<CommandItem>("maximumhostility"_J, "Aplicar nível de procurado"));
 				}
 				else if (category->m_Name == "Armas")
@@ -82,8 +82,7 @@ namespace YimMenu
 		g_SettingsInstance.LoadSettings();
 
 		auto selfSubmenu = std::make_shared<Submenus::Self>();
-		Submenus::InstallAbilityCards(selfSubmenu);
-		Submenus::InstallAbilityCardPower(selfSubmenu);
+		// Ability-card modification editors were intentionally removed from the UI.
 		Submenus::InstallHorseBonding(selfSubmenu);
 		AddSelfShortcuts(selfSubmenu);
 		UIManager::AddSubmenu(std::move(selfSubmenu));
