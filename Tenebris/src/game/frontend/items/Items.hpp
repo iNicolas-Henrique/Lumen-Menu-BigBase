@@ -75,6 +75,7 @@ namespace YimMenu
 		std::string GetMenuValue() const override;
 		std::string_view GetMenuDescription() const override;
 		void HandleMenuAction(MenuAction action) override;
+		bool IsVisible() const override;
 
 	private:
 		BoolCommand* m_Command;
