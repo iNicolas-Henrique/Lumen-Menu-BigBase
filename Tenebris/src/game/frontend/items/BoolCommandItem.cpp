@@ -15,16 +15,11 @@ namespace YimMenu
 	void BoolCommandItem::Draw()
 	{
 		if (!m_Command)
-		{
-			ImGui::Text("Unknown!");
 			return;
-		}
 
 		bool enabled = m_Command->GetState();
 		if (ImGui::Toggle(m_LabelOverride.has_value() ? m_LabelOverride.value().data() : m_Command->GetLabel().data(), &enabled))
 			m_Command->SetState(enabled);
-
-		// TODO: refactor this
 
 		auto windowLabel = std::format("{} Hotkey", m_Command->GetLabel());
 
@@ -41,33 +36,39 @@ namespace YimMenu
 			ImGui::BulletText("Hover over the command name to change its hotkey");
 			ImGui::BulletText("Press any registered key to remove");
 			ImGui::Separator();
-
 			HotkeySetter(m_Command->GetHash()).Draw();
-
-
 			ImGui::Spacing();
 			if (ImGui::Button("Close") || ((!ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
 				ImGui::CloseCurrentPopup();
-
 			ImGui::EndPopup();
 		}
 	}
 
 	std::string_view BoolCommandItem::GetMenuLabel() const
 	{
+		if (!m_Command)
+			return {};
 		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
 	}
+
 	std::string BoolCommandItem::GetMenuValue() const
 	{
 		return m_Command && m_Command->GetState() ? "ATIVADO" : "DESATIVADO";
 	}
+
 	std::string_view BoolCommandItem::GetMenuDescription() const
 	{
 		return m_Command ? m_Command->GetDescription() : std::string_view{};
 	}
+
 	void BoolCommandItem::HandleMenuAction(MenuAction action)
 	{
 		if (m_Command && (action == MenuAction::Enter || action == MenuAction::Left || action == MenuAction::Right))
 			m_Command->SetState(!m_Command->GetState());
+	}
+
+	bool BoolCommandItem::IsVisible() const
+	{
+		return m_Command != nullptr;
 	}
 }
