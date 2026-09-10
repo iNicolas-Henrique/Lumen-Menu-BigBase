@@ -7,7 +7,9 @@
 #include "game/backend/Self.hpp"
 #include "game/rdr/Natives.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 
 namespace YimMenu::Submenus
