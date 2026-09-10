@@ -244,6 +244,48 @@ namespace YimMenu::Features
             return false;
         }
 
+        int CreateDoppelgangerShell(int selfHandle, const Vector3& pos)
+        {
+            if (!selfHandle || !ENTITY::DOES_ENTITY_EXIST(selfHandle))
+                return 0;
+
+            const Hash model = ENTITY::GET_ENTITY_MODEL(selfHandle);
+            if (!model || !STREAMING::IS_MODEL_IN_CDIMAGE(model) || !STREAMING::HAS_MODEL_LOADED(model))
+                return 0;
+
+            const float heading = ENTITY::GET_ENTITY_HEADING(selfHandle);
+            LOG(INFO) << "[PlayerMustDie] creating local doppelganger shell; model=" << model;
+            int clone = PED::CREATE_PED(model, pos.x, pos.y, pos.z, heading, false, 0, 0, 0);
+            if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
+            {
+                LOG(WARNING) << "[PlayerMustDie] local doppelganger shell was invalid";
+                if (clone && ENTITY::DOES_ENTITY_EXIST(clone) && !PED::IS_PED_A_PLAYER(clone))
+                    PED::DELETE_PED(&clone);
+                return 0;
+            }
+
+            ENTITY::SET_ENTITY_AS_MISSION_ENTITY(clone, true, true);
+            if (!ENTITY::DOES_ENTITY_EXIST(selfHandle) || !ENTITY::DOES_ENTITY_EXIST(clone))
+            {
+                if (clone && ENTITY::DOES_ENTITY_EXIST(clone))
+                    PED::DELETE_PED(&clone);
+                return 0;
+            }
+
+            // Copy appearance only after a valid local target exists. This avoids
+            // directly cloning the live player entity, which is the crash-prone path.
+            PED::CLONE_PED_TO_TARGET(selfHandle, clone);
+            if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
+            {
+                LOG(WARNING) << "[PlayerMustDie] doppelganger became invalid after appearance copy";
+                if (clone && ENTITY::DOES_ENTITY_EXIST(clone) && !PED::IS_PED_A_PLAYER(clone))
+                    PED::DELETE_PED(&clone);
+                return 0;
+            }
+
+            return clone;
+        }
+
         void SpawnClone(int selfHandle, const Vector3& selfPos, const std::vector<int>& humans, const Clock::time_point now)
         {
             g_Clones.erase(std::remove_if(g_Clones.begin(), g_Clones.end(), [](int ped) {
@@ -258,18 +300,19 @@ namespace YimMenu::Features
             if (!FindCloneSpawn(selfHandle, selfPos, pos))
                 return;
 
-            int clone = PED::CLONE_PED(selfHandle, false, false, true);
-            if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
+            int clone = CreateDoppelgangerShell(selfHandle, pos);
+            if (!clone)
                 return;
 
-            ENTITY::SET_ENTITY_AS_MISSION_ENTITY(clone, true, true);
-            ENTITY::SET_ENTITY_COORDS_NO_OFFSET(clone, pos.x, pos.y, pos.z, true, true, true);
             ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(clone, true);
             ENTITY::SET_ENTITY_MAX_HEALTH(clone, kCloneHealth);
             ENTITY::SET_ENTITY_HEALTH(clone, kCloneHealth, 0);
 
             // Random outfit variation keeps the doppelganger from always mirroring the exact current look.
             PED::_SET_RANDOM_OUTFIT_VARIATION(clone, true);
+            if (!ENTITY::DOES_ENTITY_EXIST(clone))
+                return;
+
             ArmRandomly(clone);
             ConfigureFighter(clone, true);
 
@@ -282,6 +325,7 @@ namespace YimMenu::Features
             fighter.NextHitCheck = now;
             g_Fighters.push_back(fighter);
             g_Clones.push_back(clone);
+            LOG(INFO) << "[PlayerMustDie] doppelganger ready; handle=" << clone;
         }
 
         void Cleanup()
