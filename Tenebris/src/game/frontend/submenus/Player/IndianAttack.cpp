@@ -132,7 +132,7 @@ namespace YimMenu::Features
 
         void PlayRiotVoice(int ped)
         {
-            static constexpr std::array<Hash, 6> emotes{
+            static const std::array<Hash, 6> emotes{
                 Joaat("KIT_EMOTE_TAUNT_WAR_CRY_1"),
                 Joaat("KIT_EMOTE_REACTION_FRIGHTENED_1"),
                 Joaat("KIT_EMOTE_REACTION_ANGRY_1"),
