@@ -8,6 +8,7 @@
 #include "game/backend/Players.hpp"
 #include "game/backend/ScriptMgr.hpp"
 #include "game/backend/Self.hpp"
+#include "game/backend/WantedMusicExtras.hpp"
 #include "game/frontend/ContextMenu.hpp"
 #include "game/frontend/GUI.hpp"
 #include "game/rdr/Enums.hpp"
@@ -59,6 +60,7 @@ namespace YimMenu
 	void FeatureLoop()
 	{
 		Commands::EnableBoolCommands();
+		EnsureWantedMusicExtras();
 
 		while (true)
 		{
