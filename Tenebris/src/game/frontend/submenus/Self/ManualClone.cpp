@@ -48,7 +48,6 @@ namespace YimMenu::Submenus
 		{
 			int WeaponIndex{};
 			CloneMode Mode{CloneMode::Bodyguard};
-			bool FatalGore{true};
 			int SourcePlayerId{-1};
 		};
 
@@ -71,13 +70,13 @@ namespace YimMenu::Submenus
 			int Ped{};
 			int SourcePlayerId{-1};
 			CloneMode Mode{CloneMode::Bodyguard};
+			Clock::time_point DeadAt{};
 		};
 
 		constexpr int kCloneHealth = 800;
-		constexpr float kEngageRadius = 135.0f;
-		constexpr float kGuardRadius = 150.0f;
-		constexpr float kTargetLeashRadius = 165.0f;
-		constexpr float kApproachDistance = 72.0f;
+		constexpr float kEngageRadius = 95.0f;
+		constexpr float kGuardRadius = 110.0f;
+		constexpr float kTargetLeashRadius = 125.0f;
 		constexpr float kHorseSearchRadius = 36.0f;
 		constexpr float kSocialRadius = 11.0f;
 		constexpr float kMourningRadius = 80.0f;
@@ -98,83 +97,44 @@ namespace YimMenu::Submenus
 		constexpr auto kMourningEmoteTime = 4500ms;
 		constexpr auto kMourningFleeTime = 7000ms;
 		constexpr auto kMourningCooldown = 45s;
+		constexpr auto kCorpseKeepTime = 45s;
 
+		inline constexpr ManualCloneEmotes::Definition kIdleSmokeEmote{"KIT_EMOTE_ACTION_SMOKE_CIGARETTE_1", 1};
+
+		// Only weapons usable in Red Dead Online are exposed here. Story-character,
+		// gunslinger and campaign-only collectible variants are deliberately excluded.
 		constexpr std::array kCloneWeapons = {
 		    CloneWeapon{"Desarmado", "Unarmed", "WEAPON_UNARMED"},
 		    CloneWeapon{"Faca", "Knife", "WEAPON_MELEE_KNIFE"},
-		    CloneWeapon{"Faca de urso", "Antler Knife", "WEAPON_MELEE_KNIFE_BEAR"},
-		    CloneWeapon{"Faca da Guerra Civil", "Civil War Knife", "WEAPON_MELEE_KNIFE_CIVIL_WAR"},
-		    CloneWeapon{"Faca Jawbone", "Jawbone Knife", "WEAPON_MELEE_KNIFE_JAWBONE"},
 		    CloneWeapon{"Facão", "Machete", "WEAPON_MELEE_MACHETE"},
 		    CloneWeapon{"Facão de colecionador", "Collector Machete", "WEAPON_MELEE_MACHETE_COLLECTOR"},
 		    CloneWeapon{"Machadinha", "Hatchet", "WEAPON_MELEE_HATCHET"},
-		    CloneWeapon{"Machado Viking", "Viking Hatchet", "WEAPON_MELEE_HATCHET_VIKING"},
-		    CloneWeapon{"Machado antigo", "Ancient Hatchet", "WEAPON_MELEE_ANCIENT_HATCHET"},
-		    CloneWeapon{"Espada quebrada", "Broken Sword", "WEAPON_MELEE_BROKEN_SWORD"},
-		    CloneWeapon{"Faca do Bill (História)", "Bill's Knife (Story)", "WEAPON_MELEE_KNIFE_BILL"},
-		    CloneWeapon{"Faca do Charles (História)", "Charles' Knife (Story)", "WEAPON_MELEE_KNIFE_CHARLES"},
-		    CloneWeapon{"Faca do Dutch (História)", "Dutch's Knife (Story)", "WEAPON_MELEE_KNIFE_DUTCH"},
-		    CloneWeapon{"Faca do Javier (História)", "Javier's Knife (Story)", "WEAPON_MELEE_KNIFE_JAVIER"},
-		    CloneWeapon{"Faca do John (História)", "John's Knife (Story)", "WEAPON_MELEE_KNIFE_JOHN"},
-		    CloneWeapon{"Faca do Micah (História)", "Micah's Knife (Story)", "WEAPON_MELEE_KNIFE_MICAH"},
-		    CloneWeapon{"Faca da Sadie (História)", "Sadie's Knife (Story)", "WEAPON_MELEE_KNIFE_SADIE"},
+		    CloneWeapon{"Cutelo", "Cleaver", "WEAPON_MELEE_CLEAVER"},
 		    CloneWeapon{"Revólver Cattleman", "Cattleman Revolver", "WEAPON_REVOLVER_CATTLEMAN"},
-		    CloneWeapon{"Cattleman do Hosea (História)", "Hosea's Cattleman (Story)", "WEAPON_REVOLVER_CATTLEMAN_HOSEA"},
-		    CloneWeapon{"Cattleman do Hosea - duplo (História)", "Hosea's Cattleman - Dual (Story)", "WEAPON_REVOLVER_CATTLEMAN_HOSEA_DUALWIELD"},
-		    CloneWeapon{"Cattleman do John (História)", "John's Cattleman (Story)", "WEAPON_REVOLVER_CATTLEMAN_JOHN"},
-		    CloneWeapon{"Cattleman do Kieran (História)", "Kieran's Cattleman (Story)", "WEAPON_REVOLVER_CATTLEMAN_KIERAN"},
-		    CloneWeapon{"Cattleman do Lenny (História)", "Lenny's Cattleman (Story)", "WEAPON_REVOLVER_CATTLEMAN_LENNY"},
-		    CloneWeapon{"Revólver do Flaco Hernández (Pistoleiro)", "Flaco Hernandez's Revolver (Gunslinger)", "WEAPON_REVOLVER_CATTLEMAN_MEXICAN"},
-		    CloneWeapon{"Revólver do Emmet Granger (Pistoleiro)", "Emmet Granger's Revolver (Gunslinger)", "WEAPON_REVOLVER_CATTLEMAN_PIG"},
-		    CloneWeapon{"Cattleman da Sadie (História)", "Sadie's Cattleman (Story)", "WEAPON_REVOLVER_CATTLEMAN_SADIE"},
-		    CloneWeapon{"Cattleman da Sadie - duplo (História)", "Sadie's Cattleman - Dual (Story)", "WEAPON_REVOLVER_CATTLEMAN_SADIE_DUALWIELD"},
-		    CloneWeapon{"Cattleman do Sean (História)", "Sean's Cattleman (Story)", "WEAPON_REVOLVER_CATTLEMAN_SEAN"},
 		    CloneWeapon{"Revólver Double-Action", "Double-Action Revolver", "WEAPON_REVOLVER_DOUBLEACTION"},
-		    CloneWeapon{"Revólver do Algernon Wasp (História)", "Algernon Wasp's Revolver (Story)", "WEAPON_REVOLVER_DOUBLEACTION_EXOTIC"},
 		    CloneWeapon{"High Roller Double-Action", "High Roller Double-Action", "WEAPON_REVOLVER_DOUBLEACTION_GAMBLER"},
-		    CloneWeapon{"Double-Action do Javier (História)", "Javier's Double-Action (Story)", "WEAPON_REVOLVER_DOUBLEACTION_JAVIER"},
-		    CloneWeapon{"Revólver do Micah (História)", "Micah's Revolver (Story)", "WEAPON_REVOLVER_DOUBLEACTION_MICAH"},
-		    CloneWeapon{"Revólver do Micah - duplo (História)", "Micah's Revolver - Dual (Story)", "WEAPON_REVOLVER_DOUBLEACTION_MICAH_DUALWIELD"},
 		    CloneWeapon{"Revólver Schofield", "Schofield Revolver", "WEAPON_REVOLVER_SCHOFIELD"},
-		    CloneWeapon{"Schofield do Bill (História)", "Bill's Schofield (Story)", "WEAPON_REVOLVER_SCHOFIELD_BILL"},
-		    CloneWeapon{"Revólver do Jim Boy Calloway (Pistoleiro)", "Jim Boy Calloway's Revolver (Gunslinger)", "WEAPON_REVOLVER_SCHOFIELD_CALLOWAY"},
-		    CloneWeapon{"Schofield do Dutch (História)", "Dutch's Schofield (Story)", "WEAPON_REVOLVER_SCHOFIELD_DUTCH"},
-		    CloneWeapon{"Schofield do Dutch - duplo (História)", "Dutch's Schofield - Dual (Story)", "WEAPON_REVOLVER_SCHOFIELD_DUTCH_DUALWIELD"},
-		    CloneWeapon{"Revólver do Otis Miller (História)", "Otis Miller's Revolver (Story)", "WEAPON_REVOLVER_SCHOFIELD_GOLDEN"},
-		    CloneWeapon{"Schofield do Uncle (História)", "Uncle's Schofield (Story)", "WEAPON_REVOLVER_SCHOFIELD_UNCLE"},
 		    CloneWeapon{"Revólver LeMat", "LeMat Revolver", "WEAPON_REVOLVER_LEMAT"},
 		    CloneWeapon{"Revólver Navy", "Navy Revolver", "WEAPON_REVOLVER_NAVY"},
 		    CloneWeapon{"Pistola Volcanic", "Volcanic Pistol", "WEAPON_PISTOL_VOLCANIC"},
-		    CloneWeapon{"Pistola M1899", "M1899 Pistol", "WEAPON_PISTOL_M1899"},
 		    CloneWeapon{"Pistola Mauser", "Mauser Pistol", "WEAPON_PISTOL_MAUSER"},
-		    CloneWeapon{"Pistola do Billy Midnight (Pistoleiro)", "Billy Midnight's Pistol (Gunslinger)", "WEAPON_PISTOL_MAUSER_DRUNK"},
 		    CloneWeapon{"Pistola Semi-Auto", "Semi-Auto Pistol", "WEAPON_PISTOL_SEMIAUTO"},
 		    CloneWeapon{"Carabina", "Carbine Repeater", "WEAPON_REPEATER_CARBINE"},
-		    CloneWeapon{"Carabina da Sadie (História)", "Sadie's Carbine Repeater (Story)", "WEAPON_REPEATER_CARBINE_SADIE"},
 		    CloneWeapon{"Evans Repeater", "Evans Repeater", "WEAPON_REPEATER_EVANS"},
 		    CloneWeapon{"Litchfield Repeater", "Litchfield Repeater", "WEAPON_REPEATER_HENRY"},
 		    CloneWeapon{"Lancaster Repeater", "Lancaster Repeater", "WEAPON_REPEATER_WINCHESTER"},
-		    CloneWeapon{"Lancaster do John (História)", "John's Lancaster (Story)", "WEAPON_REPEATER_WINCHESTER_JOHN"},
 		    CloneWeapon{"Rifle Bolt Action", "Bolt Action Rifle", "WEAPON_RIFLE_BOLTACTION"},
-		    CloneWeapon{"Bolt Action do Bill (História)", "Bill's Bolt Action (Story)", "WEAPON_RIFLE_BOLTACTION_BILL"},
 		    CloneWeapon{"Rifle Springfield", "Springfield Rifle", "WEAPON_RIFLE_SPRINGFIELD"},
 		    CloneWeapon{"Rifle Varmint", "Varmint Rifle", "WEAPON_RIFLE_VARMINT"},
 		    CloneWeapon{"Rifle Elephant", "Elephant Rifle", "WEAPON_RIFLE_ELEPHANT"},
 		    CloneWeapon{"Rifle Carcano", "Carcano Rifle", "WEAPON_SNIPERRIFLE_CARCANO"},
 		    CloneWeapon{"Rolling Block", "Rolling Block Rifle", "WEAPON_SNIPERRIFLE_ROLLINGBLOCK"},
-		    CloneWeapon{"Rolling Block raro", "Rare Rolling Block", "WEAPON_SNIPERRIFLE_ROLLINGBLOCK_EXOTIC"},
-		    CloneWeapon{"Rolling Block do Lenny (História)", "Lenny's Rolling Block (Story)", "WEAPON_SNIPERRIFLE_ROLLINGBLOCK_LENNY"},
 		    CloneWeapon{"Escopeta Pump", "Pump Shotgun", "WEAPON_SHOTGUN_PUMP"},
 		    CloneWeapon{"Escopeta Repeating", "Repeating Shotgun", "WEAPON_SHOTGUN_REPEATING"},
 		    CloneWeapon{"Escopeta Double Barrel", "Double Barrel Shotgun", "WEAPON_SHOTGUN_DOUBLEBARREL"},
-		    CloneWeapon{"Escopeta Double Barrel rara", "Rare Double Barrel", "WEAPON_SHOTGUN_DOUBLEBARREL_EXOTIC"},
-		    CloneWeapon{"Double Barrel do Uncle (História)", "Uncle's Double Barrel (Story)", "WEAPON_SHOTGUN_DOUBLEBARREL_UNCLE"},
 		    CloneWeapon{"Escopeta Semi-Auto", "Semi-Auto Shotgun", "WEAPON_SHOTGUN_SEMIAUTO"},
-		    CloneWeapon{"Semi-Auto do Hosea (História)", "Hosea's Semi-Auto (Story)", "WEAPON_SHOTGUN_SEMIAUTO_HOSEA"},
 		    CloneWeapon{"Escopeta serrada", "Sawed-Off Shotgun", "WEAPON_SHOTGUN_SAWEDOFF"},
-		    CloneWeapon{"Serrada do Charles (História)", "Charles' Sawed-Off (Story)", "WEAPON_SHOTGUN_SAWEDOFF_CHARLES"},
 		    CloneWeapon{"Arco", "Bow", "WEAPON_BOW"},
-		    CloneWeapon{"Arco do Charles (História)", "Charles' Bow (Story)", "WEAPON_BOW_CHARLES"},
 		    CloneWeapon{"Arco melhorado", "Improved Bow", "WEAPON_BOW_IMPROVED"},
 		};
 
@@ -228,6 +188,12 @@ namespace YimMenu::Submenus
 			return managed && managed->Mode == CloneMode::AttackOwner && managed->Ped && ENTITY::DOES_ENTITY_EXIST(managed->Ped) && !ENTITY::IS_ENTITY_DEAD(managed->Ped);
 		}
 
+		void MarkCloneDead(int ped)
+		{
+			if (auto* managed = FindManagedClone(ped); managed && managed->DeadAt == Clock::time_point{})
+				managed->DeadAt = Clock::now();
+		}
+
 		void ResetMourning()
 		{
 			g_MourningClone = 0;
@@ -251,7 +217,7 @@ namespace YimMenu::Submenus
 			g_ManagedClones.erase(std::remove_if(g_ManagedClones.begin(), g_ManagedClones.end(), [&](const ManagedClone& c) {
 				if (!c.Ped || !ENTITY::DOES_ENTITY_EXIST(c.Ped))
 					return true;
-				if (deleteDead && ENTITY::IS_ENTITY_DEAD(c.Ped) && deadDeleted < 4)
+				if (deleteDead && ENTITY::IS_ENTITY_DEAD(c.Ped) && c.DeadAt != Clock::time_point{} && now - c.DeadAt >= kCorpseKeepTime && deadDeleted < 4)
 				{
 					if (c.Ped == g_MourningDeadClone && now < g_MourningFleeUntil)
 						return false;
@@ -307,8 +273,8 @@ namespace YimMenu::Submenus
 		int AccuracyForWeapon(std::string_view weaponName)
 		{
 			if (IsSidearm(weaponName)) return 60;
-			if (IsLongGun(weaponName)) return 89;
-			return 74;
+			if (IsLongGun(weaponName)) return 82;
+			return 70;
 		}
 
 		bool EnsureModelLoaded(Hash model)
@@ -323,22 +289,39 @@ namespace YimMenu::Submenus
 			return STREAMING::HAS_MODEL_LOADED(model);
 		}
 
+		bool IsSourcePlayerStable(int sourcePlayerId, int expectedPed = 0)
+		{
+			if (sourcePlayerId < 0)
+				sourcePlayerId = PLAYER::PLAYER_ID();
+			if (sourcePlayerId != PLAYER::PLAYER_ID() && !NETWORK::NETWORK_IS_PLAYER_ACTIVE(sourcePlayerId))
+				return false;
+			const int ped = PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(sourcePlayerId);
+			if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped) || ENTITY::IS_ENTITY_DEAD(ped))
+				return false;
+			return !expectedPed || expectedPed == ped;
+		}
+
 		int ResolveSourcePed(int sourcePlayerId)
 		{
 			if (sourcePlayerId < 0)
 				sourcePlayerId = PLAYER::PLAYER_ID();
-			const int ped = PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(sourcePlayerId);
-			return ped && ENTITY::DOES_ENTITY_EXIST(ped) ? ped : 0;
+			if (!IsSourcePlayerStable(sourcePlayerId))
+				return 0;
+			return PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(sourcePlayerId);
 		}
 
-		int CreateLocalCloneShell(int sourceHandle, const Vector3& spawn, float heading)
+		int CreateLocalCloneShell(int sourcePlayerId, int sourceHandle, const Vector3& spawn, float heading)
 		{
-			if (!sourceHandle || !ENTITY::DOES_ENTITY_EXIST(sourceHandle))
-				return 0;
-			const Hash model = ENTITY::GET_ENTITY_MODEL(sourceHandle);
-			if (!EnsureModelLoaded(model))
+			if (!IsSourcePlayerStable(sourcePlayerId, sourceHandle))
 				return 0;
 
+			const Hash model = ENTITY::GET_ENTITY_MODEL(sourceHandle);
+			if (!EnsureModelLoaded(model) || !IsSourcePlayerStable(sourcePlayerId, sourceHandle))
+				return 0;
+
+			LOG(INFO) << "[ManualClone] creating local-only shell; sourcePlayer=" << sourcePlayerId << "; model=" << model;
+			// isNetwork=false is intentional: the clone remains local to this client and
+			// is not registered as a network ped for other players in the session.
 			int clone = PED::CREATE_PED(model, spawn.x, spawn.y, spawn.z, heading, false, 0, 0, 0);
 			STREAMING::SET_MODEL_AS_NO_LONGER_NEEDED(model);
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
@@ -348,13 +331,15 @@ namespace YimMenu::Submenus
 			}
 
 			ENTITY::SET_ENTITY_AS_MISSION_ENTITY(clone, true, true);
-			ScriptMgr::Yield();
-			if (!ENTITY::DOES_ENTITY_EXIST(sourceHandle) || !ENTITY::DOES_ENTITY_EXIST(clone))
+			if (!IsSourcePlayerStable(sourcePlayerId, sourceHandle) || !ENTITY::DOES_ENTITY_EXIST(clone))
 			{
 				if (ENTITY::DOES_ENTITY_EXIST(clone)) PED::DELETE_PED(&clone);
 				return 0;
 			}
 
+			// This is the only stage that copies a live MetaPed appearance. Keeping the
+			// source stable and the target local removes the most common stale-handle race.
+			LOG(INFO) << "[ManualClone] copying appearance to local shell; handle=" << clone;
 			PED::CLONE_PED_TO_TARGET(sourceHandle, clone);
 			ScriptMgr::Yield();
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
@@ -362,9 +347,10 @@ namespace YimMenu::Submenus
 				if (clone && ENTITY::DOES_ENTITY_EXIST(clone) && !PED::IS_PED_A_PLAYER(clone)) PED::DELETE_PED(&clone);
 				return 0;
 			}
+
 			PED::_UPDATE_PED_VARIATION(clone, 0, 1, 1, 1, 0);
-			ScriptMgr::Yield();
-			return ENTITY::DOES_ENTITY_EXIST(clone) ? clone : 0;
+			LOG(INFO) << "[ManualClone] appearance copied; handle=" << clone;
+			return clone;
 		}
 
 		void ApplyPlayerPromptName(int clone, int sourcePlayerId)
@@ -397,7 +383,7 @@ namespace YimMenu::Submenus
 				if (component != g_LastHalloweenMask) break;
 			}
 			if (!component) return;
-			PED::_SET_PED_COMPONENT_ENABLED(clone, component, true, true, true);
+			PED::_APPLY_SHOP_ITEM_TO_PED(clone, component, true, true, true);
 			PED::_UPDATE_PED_VARIATION(clone, 0, 1, 1, 1, 0);
 			g_LastHalloweenMask = component;
 		}
@@ -410,6 +396,15 @@ namespace YimMenu::Submenus
 			PED::_SET_PED_INCAPACITATION_TOTAL_BLEED_OUT_DURATION(clone, kBleedOutSeconds);
 			PED::_SET_PED_WRITHING_DURATION(clone, 8.0f, kBleedOutSeconds, 0);
 			PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
+		}
+
+		void ConfigureCloneLoot(int clone)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone)) return;
+			PED::SET_LOOTING_FLAG(clone, 0, true); // long loot
+			PED::SET_LOOTING_FLAG(clone, 1, true); // quick loot
+			WEAPON::SET_PED_DROPS_WEAPONS_WHEN_DEAD(clone, true);
+			WEAPON::SET_PED_AMMO_TO_DROP(clone, 1, 1);
 		}
 
 		int GetPlayerMountHandle()
@@ -429,11 +424,6 @@ namespace YimMenu::Submenus
 		{
 			if (!a || !b || !ENTITY::DOES_ENTITY_EXIST(a) || !ENTITY::DOES_ENTITY_EXIST(b)) return false;
 			return DistanceSquared(ENTITY::GET_ENTITY_COORDS(a, true, false), ENTITY::GET_ENTITY_COORDS(b, true, false)) <= radius * radius;
-		}
-
-		bool HasClearShot(int clone, int target)
-		{
-			return clone && target && ENTITY::DOES_ENTITY_EXIST(clone) && ENTITY::DOES_ENTITY_EXIST(target) && ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(clone, target, 17);
 		}
 
 		int FindNearestNpcTarget(int clone, int owner, float radius)
@@ -558,7 +548,7 @@ namespace YimMenu::Submenus
 			if (TASK::IS_EMOTE_TASK_RUNNING(localPed, 0) && IsLocalCameraLookingAt(clone, kSocialRadius)) return localPed;
 			for (int id = 0; id < 32; ++id)
 			{
-				if (id == localId) continue;
+				if (id == localId || !NETWORK::NETWORK_IS_PLAYER_ACTIVE(id)) continue;
 				const int ped = PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(id);
 				if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped) || ENTITY::IS_ENTITY_DEAD(ped)) continue;
 				if (TASK::IS_EMOTE_TASK_RUNNING(ped, 0) && IsPedFacingClone(ped, clone, kSocialRadius)) return ped;
@@ -622,58 +612,27 @@ namespace YimMenu::Submenus
 			PlayPlayerEmote(mourner, ManualCloneEmotes::kMourningEmote, true);
 		}
 
-		template <std::size_t N>
-		bool DamageBoneMatches(int ped, int damageBone, const std::array<int, N>& boneTags)
-		{
-			for (int boneTag : boneTags)
-			{
-				if (damageBone == boneTag) return true;
-				const int boneIndex = PED::GET_PED_BONE_INDEX(ped, boneTag);
-				if (boneIndex >= 0 && damageBone == boneIndex) return true;
-			}
-			return false;
-		}
-
-		void ApplyFatalGore(int clone, int lastDamageBone, Hash weapon)
-		{
-			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || !lastDamageBone) return;
-			static constexpr std::array<int, 2> head{21030, 27981};
-			static constexpr std::array<int, 11> torso{11569, 14410, 14411, 14412, 14413, 14414, 14415, 14416, 6757, 6758, 57309};
-			if (DamageBoneMatches(clone, lastDamageBone, head))
-				PED::EXPLODE_PED_HEAD(clone, weapon ? weapon : Joaat("WEAPON_REPEATER_CARBINE"));
-			else if (DamageBoneMatches(clone, lastDamageBone, torso))
-				PED::APPLY_PED_DAMAGE_PACK(clone, "PD_Human_carcass_Hvy", 1.0f, 1.0f);
-		}
-
-		void ConfigureCloneCombat(int clone, CloneMode mode, std::string_view weaponName)
+		void ConfigureCloneCombat(int clone, std::string_view weaponName)
 		{
 			PED::SET_PED_KEEP_TASK(clone, true);
 			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false);
-			PED::SET_PED_COMBAT_ABILITY(clone, 3);
-			PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
-			PED::SET_PED_COMBAT_RANGE(clone, 2);
+			PED::SET_PED_COMBAT_ABILITY(clone, 2);
 			PED::SET_PED_ACCURACY(clone, AccuracyForWeapon(weaponName));
-			PED::SET_PED_SEEING_RANGE(clone, 165.0f);
-			PED::SET_PED_HEARING_RANGE(clone, 150.0f);
-			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, mode == CloneMode::Bodyguard ? 1.25f : 1.35f);
-			for (int attribute : {0, 1, 5, 13, 21, 25, 31, 39, 41, 42, 46, 49, 54, 58, 63, 68, 78, 80, 81, 91, 92, 93, 113, 115})
-				PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, true);
+			PED::SET_PED_SEEING_RANGE(clone, 130.0f);
+			PED::SET_PED_HEARING_RANGE(clone, 120.0f);
+
+			// Keep Rockstar's normal combat task and navigation. These flags only enable
+			// capabilities the stock combat brain uses; no scripted seek-cover loop is used.
+			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 0, true);  // use cover
+			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);  // dynamic strafe decisions
+			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);  // keep fighting
+			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true); // chase on foot
+			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true); // require LOS before shooting
+			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true); // proximity firing-rate decisions
 			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, false);
 		}
 
-		bool RecoverIntoBleedout(int clone)
-		{
-			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone)) return false;
-			PED::RESURRECT_PED(clone);
-			PED::REVIVE_INJURED_PED(clone);
-			if (!ENTITY::DOES_ENTITY_EXIST(clone)) return false;
-			ENTITY::SET_ENTITY_HEALTH(clone, 2, 0);
-			ConfigureBleedout(clone);
-			PED::SET_PED_TO_RAGDOLL(clone, 900, 900, 0, false, false, false);
-			return true;
-		}
-
-		Hash EquipCloneWeapon(int clone, int weaponIndex)
+		void EquipCloneWeapon(int clone, int weaponIndex)
 		{
 			weaponIndex = std::clamp(weaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
 			WEAPON::REMOVE_ALL_PED_WEAPONS(clone, true, true);
@@ -683,32 +642,12 @@ namespace YimMenu::Submenus
 				WEAPON::GIVE_WEAPON_TO_PED(clone, weapon, 999, true, true, 0, false, 0.5f, 1.0f, 1.0f, false, 0, false);
 				WEAPON::SET_CURRENT_PED_WEAPON(clone, weapon, true, 0, false, false);
 			}
-			return weapon;
 		}
 
-		void TaskTacticalCombat(int clone, int target, int owner)
+		void TaskVanillaCombat(int clone, int target, int owner)
 		{
 			const bool validTarget = target == owner || IsHostileManagedCloneForOwner(target) || IsValidNpcTarget(target, clone, owner);
 			if (!validTarget) return;
-			const float dSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(target, true, false));
-			if (dSq > kApproachDistance * kApproachDistance)
-			{
-				TASK::TASK_GO_TO_ENTITY(clone, target, 2600, 42.0f, 2.2f, 0.0f, 0);
-				return;
-			}
-
-			if (!HasClearShot(clone, target))
-			{
-				TASK::TASK_SEEK_COVER_FROM_PED(clone, target, 2200, true, 0, 0);
-				return;
-			}
-
-			if (ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(clone, target, true, true))
-			{
-				ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
-				TASK::TASK_SEEK_COVER_FROM_PED(clone, target, 1800, true, 0, 0);
-				return;
-			}
 			TASK::TASK_COMBAT_PED(clone, target, 0, 16);
 		}
 
@@ -737,12 +676,10 @@ namespace YimMenu::Submenus
 			return false;
 		}
 
-		void RunCloneBrain(int clone, int owner, CloneOptions options, Hash weapon)
+		void RunCloneBrain(int clone, int owner, CloneOptions options)
 		{
 			int currentTarget{};
 			int issuedTarget{};
-			int lastDamageBone{};
-			bool fatalRecoveryUsed{};
 			bool sawIncapacitation{};
 			bool insultedOnBetrayal{};
 			bool smoking{};
@@ -752,12 +689,11 @@ namespace YimMenu::Submenus
 			auto nextIdleEmote = Clock::now() + 18s;
 			auto nextHorse = Clock::now();
 			auto idleSince = Clock::now();
-			auto fallbackDeathAt = Clock::time_point::max();
 
 			while (clone && ENTITY::DOES_ENTITY_EXIST(clone))
 			{
-				int damageBone{};
-				if (PED::GET_PED_LAST_DAMAGE_BONE(clone, &damageBone) && damageBone) lastDamageBone = damageBone;
+				if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner))
+					break;
 
 				if (options.Mode == CloneMode::Bodyguard && !g_BodyguardsBetrayed && ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(clone, owner, true, true))
 				{
@@ -780,30 +716,13 @@ namespace YimMenu::Submenus
 
 				if (ENTITY::IS_ENTITY_DEAD(clone))
 				{
-					if (!sawIncapacitation && !fatalRecoveryUsed)
-					{
-						fatalRecoveryUsed = RecoverIntoBleedout(clone);
-						if (fatalRecoveryUsed)
-						{
-							fallbackDeathAt = Clock::now() + 10s;
-							ScriptMgr::Yield(kBrainTick);
-							continue;
-						}
-					}
-					if (options.FatalGore) ApplyFatalGore(clone, lastDamageBone, weapon);
+					MarkCloneDead(clone);
 					if (clone == g_MourningClone) ResetMourning();
 					MaybeStartMourning(clone, options.Mode);
 					break;
 				}
 
 				const auto now = Clock::now();
-				if (fatalRecoveryUsed && !sawIncapacitation && now >= fallbackDeathAt)
-				{
-					ENTITY::SET_ENTITY_HEALTH(clone, 0, 0);
-					ScriptMgr::Yield(kBrainTick);
-					continue;
-				}
-
 				if (clone == g_MourningClone)
 				{
 					if (now < g_MourningEmoteUntil)
@@ -870,9 +789,9 @@ namespace YimMenu::Submenus
 						smoking = false;
 						wandering = false;
 						idleSince = now;
-						if (issuedTarget != currentTarget || !PED::IS_PED_IN_COMBAT(clone, currentTarget) || !HasClearShot(clone, currentTarget))
+						if (issuedTarget != currentTarget || !PED::IS_PED_IN_COMBAT(clone, currentTarget))
 						{
-							TaskTacticalCombat(clone, currentTarget, owner);
+							TaskVanillaCombat(clone, currentTarget, owner);
 							issuedTarget = currentTarget;
 						}
 					}
@@ -897,7 +816,7 @@ namespace YimMenu::Submenus
 							const Vector3 pos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
 							if (idleFor >= kIdleSmokeDelay && !smoking && !PATHFIND::IS_POINT_ON_ROAD(pos.x, pos.y, pos.z, 0))
 							{
-								TASK::TASK_START_SCENARIO_IN_PLACE_HASH(clone, Joaat("WORLD_HUMAN_SMOKE"), 10000, true, 0, ENTITY::GET_ENTITY_HEADING(clone), false);
+								PlayPlayerEmote(clone, kIdleSmokeEmote);
 								smoking = true;
 							}
 						}
@@ -912,7 +831,7 @@ namespace YimMenu::Submenus
 							const Vector3 pos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
 							if (idleFor >= kIdleSmokeDelay && !smoking && !PATHFIND::IS_POINT_ON_ROAD(pos.x, pos.y, pos.z, 0))
 							{
-								TASK::TASK_START_SCENARIO_IN_PLACE_HASH(clone, Joaat("WORLD_HUMAN_SMOKE"), 9000, true, 0, ENTITY::GET_ENTITY_HEADING(clone), false);
+								PlayPlayerEmote(clone, kIdleSmokeEmote);
 								smoking = true;
 							}
 							if (idleFor >= kIdleLeaveDelay && !wandering)
@@ -964,14 +883,14 @@ namespace YimMenu::Submenus
 			if (!self.IsValid() || self.GetHealth() <= 0) return;
 			const int owner = self.GetHandle();
 			if (options.SourcePlayerId < 0) options.SourcePlayerId = PLAYER::PLAYER_ID();
-			int sourcePed = ResolveSourcePed(options.SourcePlayerId);
+			const int sourcePed = ResolveSourcePed(options.SourcePlayerId);
 			if (!sourcePed)
 			{
 				Notifications::Show("Tenebris", Localization::IsPortuguese() ? "O jogador escolhido não está mais disponível na sessão." : "The selected player is no longer available in the session.", NotificationType::Warning, 2600);
 				return;
 			}
 
-			int clone = CreateLocalCloneShell(sourcePed, spawn, heading);
+			int clone = CreateLocalCloneShell(options.SourcePlayerId, sourcePed, spawn, heading);
 			if (!clone)
 			{
 				Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Não foi possível criar o clone com segurança." : "Could not create the clone safely.", NotificationType::Warning, 2600);
@@ -984,19 +903,20 @@ namespace YimMenu::Submenus
 			ApplyPlayerPromptName(clone, options.SourcePlayerId);
 			ApplyRandomHalloweenMask(clone);
 			ConfigureBleedout(clone);
+			ConfigureCloneLoot(clone);
 			options.WeaponIndex = std::clamp(options.WeaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
-			const Hash weapon = EquipCloneWeapon(clone, options.WeaponIndex);
-			ConfigureCloneCombat(clone, options.Mode, kCloneWeapons[options.WeaponIndex].HashName);
+			EquipCloneWeapon(clone, options.WeaponIndex);
+			ConfigureCloneCombat(clone, kCloneWeapons[options.WeaponIndex].HashName);
 			ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
-			g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode});
+			g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode, {}});
 			g_NextPedCacheRefresh = {};
 
 			++g_TotalSpawned;
 			if (g_TotalSpawned % 5 == 0) PruneManagedClones(true);
 
-			FiberPool::Push([clone, owner, options, weapon] { RunCloneBrain(clone, owner, options, weapon); });
+			FiberPool::Push([clone, owner, options] { RunCloneBrain(clone, owner, options); });
 			const char* sourceName = PLAYER::GET_PLAYER_NAME(options.SourcePlayerId);
-			std::string msg = Localization::IsPortuguese() ? "Clone criado" : "Clone created";
+			std::string msg = Localization::IsPortuguese() ? "Clone local criado" : "Local clone created";
 			if (sourceName && *sourceName) msg += std::string(" - ") + sourceName;
 			Notifications::Show("Tenebris", msg, NotificationType::Success, 2200);
 		}
@@ -1140,12 +1060,11 @@ namespace YimMenu::Submenus
 		{
 			int m_WeaponIndex{};
 			CloneMode m_Mode{CloneMode::Bodyguard};
-			bool m_FatalGore{true};
 			int m_SourcePlayerId{-1};
 
 			CloneOptions GetOptions() const
 			{
-				CloneOptions out{m_WeaponIndex, m_Mode, m_FatalGore, m_SourcePlayerId};
+				CloneOptions out{m_WeaponIndex, m_Mode, m_SourcePlayerId};
 				if (out.SourcePlayerId < 0) out.SourcePlayerId = PLAYER::PLAYER_ID();
 				return out;
 			}
@@ -1176,7 +1095,7 @@ namespace YimMenu::Submenus
 					if (ImGui::Selectable(localLabel.c_str(), m_SourcePlayerId < 0 || m_SourcePlayerId == localId)) m_SourcePlayerId = localId;
 					for (int id = 0; id < 32; ++id)
 					{
-						if (id == localId) continue;
+						if (id == localId || !NETWORK::NETWORK_IS_PLAYER_ACTIVE(id)) continue;
 						const int ped = PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(id);
 						const char* name = PLAYER::GET_PLAYER_NAME(id);
 						if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped) || !name || !*name) continue;
@@ -1185,7 +1104,7 @@ namespace YimMenu::Submenus
 					ImGui::EndCombo();
 				}
 
-				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Arma" : "Weapon");
+				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Arma (Red Dead Online)" : "Weapon (Red Dead Online)");
 				const char* weaponPreview = Localization::IsPortuguese() ? kCloneWeapons[m_WeaponIndex].LabelPt : kCloneWeapons[m_WeaponIndex].LabelEn;
 				ImGui::SetNextItemWidth(-1.0f);
 				if (ImGui::BeginCombo("##ManualCloneWeapon", weaponPreview))
@@ -1212,16 +1131,18 @@ namespace YimMenu::Submenus
 					}
 					ImGui::EndCombo();
 				}
-				ImGui::Checkbox(Localization::IsPortuguese() ? "Gore final após a agonia" : "Final gore after bleedout", &m_FatalGore);
 				ImGui::TextWrapped("%s", Localization::IsPortuguese() ?
-				    "Guarda-costas reage a NPCs/animais que atacarem você e também enfrenta clones criados em 'Atacar somente eu'. Frenético caça somente NPCs. Atacar somente eu mira apenas seu personagem." :
-				    "Bodyguards react to NPCs/animals attacking you and also fight clones created in 'Attack only me'. Frenzy hunts NPCs only. Attack only me targets only your character.");
+				    "O combate usa a IA nativa do RDR2: cobertura, movimentação e linha de visão são decididas pelo cérebro padrão do NPC. Guarda-costas reage a ameaças contra você e a clones criados para atacar você." :
+				    "Combat uses RDR2's native AI: cover, movement and line of sight are decided by the stock NPC combat brain. Bodyguards react to threats against you and clones created to attack you.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
-				    "Interações sociais sorteiam o catálogo de emotes normais do RDO. Raramente, um único aliado chora por um clone do mesmo grupo morto e depois foge." :
-				    "Social interactions draw from the normal RDO player-emote catalog. Rarely, one same-group clone mourns a dead clone and then runs away.");
+				    "Sem gore forçado: dano, explosão de cabeça/torso e desmembramento ficam por conta do sistema normal do jogo." :
+				    "No forced gore: damage, head/torso destruction and dismemberment are left to the game's normal system.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
-				    "Alcance de combate ~135 m, linha de visão obrigatória, cobertura, cavalo/ociosidade e remoção periódica de cadáveres continuam ativos." :
-				    "~135 m combat range, required line of sight, cover, horse/idle AI and periodic corpse cleanup remain active.");
+				    "Cadáveres ficam saqueáveis por pelo menos 45 s e podem soltar a arma/munição. O clone é criado localmente (não-networked)." :
+				    "Corpses stay lootable for at least 45 s and may drop their weapon/ammo. The clone is created locally (non-networked).");
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
+				    "Parado fora da estrada, o NPC usa o emote de cigarro do Online. Emotes sociais e luto raro continuam ativos." :
+				    "When idle off-road, the NPC uses the Online cigarette emote. Social emotes and rare mourning remain active.");
 
 				ImGui::Spacing();
 				ImGui::SeparatorText(Localization::IsPortuguese() ? "POSIÇÃO" : "POSITION");
@@ -1246,7 +1167,7 @@ namespace YimMenu::Submenus
 
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Cria clones locais seus ou de jogadores da sessão com IA tática, cobertura, emotes, cavalo, freecam e bleedout." : "Creates local clones of you or session players with tactical AI, cover, emotes, horse following, freecam and bleedout."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Cria clones locais seus ou de jogadores da sessão com IA nativa, armas do Online, loot, emotes, cavalo, freecam e bleedout." : "Creates local clones of you or session players with native AI, Online weapons, loot, emotes, horse following, freecam and bleedout."; }
 			bool RequiresImGuiEditor() const override { return true; }
 			float GetPreferredEditorHeight() const override { return 790.0f; }
 		};
