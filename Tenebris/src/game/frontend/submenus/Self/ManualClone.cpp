@@ -15,6 +15,8 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,6 +52,11 @@ namespace YimMenu::Submenus
 		constexpr float kHostileScanRadius = 500.0f;
 		constexpr float kBodyguardScanRadius = 220.0f;
 		constexpr std::size_t kMaxManagedClones = 8;
+		constexpr float kBleedOutSeconds = 12.0f;
+		constexpr int kBleedOutMilliseconds = 12000;
+		constexpr int kIncapacitationThreshold = 20;
+		constexpr int kHalloweenMaskFamilies = 6;
+		constexpr int kHalloweenMaskVariantsPerFamily = 10;
 
 		constexpr std::array kCloneWeapons = {
 		    CloneWeapon{"Desarmado", "Unarmed", "WEAPON_UNARMED"},
@@ -143,6 +150,7 @@ namespace YimMenu::Submenus
 		};
 
 		std::vector<int> g_ManagedClones;
+		Hash g_LastHalloweenMask{};
 
 		float Distance(const Vector3& a, const Vector3& b)
 		{
@@ -193,7 +201,6 @@ namespace YimMenu::Submenus
 				STREAMING::REQUEST_MODEL(model, false);
 				ScriptMgr::Yield(10ms);
 			}
-
 			return STREAMING::HAS_MODEL_LOADED(model);
 		}
 
@@ -222,7 +229,6 @@ namespace YimMenu::Submenus
 
 			ENTITY::SET_ENTITY_AS_MISSION_ENTITY(clone, true, true);
 			ScriptMgr::Yield();
-
 			if (!ENTITY::DOES_ENTITY_EXIST(selfHandle) || !ENTITY::DOES_ENTITY_EXIST(clone))
 			{
 				if (clone && ENTITY::DOES_ENTITY_EXIST(clone))
@@ -233,7 +239,6 @@ namespace YimMenu::Submenus
 			LOG(INFO) << "[ManualClone] copying appearance to shell";
 			PED::CLONE_PED_TO_TARGET(selfHandle, clone);
 			ScriptMgr::Yield();
-
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
 			{
 				LOG(WARNING) << "[ManualClone] target became invalid after appearance copy";
@@ -244,7 +249,6 @@ namespace YimMenu::Submenus
 
 			PED::_UPDATE_PED_VARIATION(clone, 0, 1, 1, 1, 0);
 			ScriptMgr::Yield();
-
 			if (!ENTITY::DOES_ENTITY_EXIST(clone))
 				return 0;
 
@@ -256,14 +260,78 @@ namespace YimMenu::Submenus
 		{
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
 				return;
-
 			const char* playerName = PLAYER::GET_PLAYER_NAME(PLAYER::PLAYER_ID());
 			if (!playerName || !*playerName)
 				return;
-
 			const char* literalString = "LITERAL_STRING";
 			PED::_SET_PED_PROMPT_NAME(clone, MISC::VAR_STRING(10, literalString, playerName));
 			LOG(INFO) << "[ManualClone] prompt name set to local player: " << playerName;
+		}
+
+		void ApplyRandomHalloweenMask(int clone)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
+				return;
+
+			const Hash model = ENTITY::GET_ENTITY_MODEL(clone);
+			char gender{};
+			if (model == Joaat("mp_male"))
+				gender = 'm';
+			else if (model == Joaat("mp_female"))
+				gender = 'f';
+			else
+			{
+				LOG(WARNING) << "[ManualClone] Halloween mask skipped: clone is not mp_male/mp_female";
+				return;
+			}
+
+			static std::mt19937 rng{static_cast<std::mt19937::result_type>(
+			    std::chrono::high_resolution_clock::now().time_since_epoch().count())};
+			std::uniform_int_distribution<int> familyDist(0, kHalloweenMaskFamilies - 1);
+			std::uniform_int_distribution<int> variantDist(1, kHalloweenMaskVariantsPerFamily);
+
+			Hash component{};
+			char componentName[80]{};
+			for (int attempt = 0; attempt < 8; ++attempt)
+			{
+				const int family = familyDist(rng);
+				const int variant = variantDist(rng);
+				std::snprintf(componentName,
+				    sizeof(componentName),
+				    "clothing_item_%c_halloween_mask_%03d_var_%03d",
+				    gender,
+				    family,
+				    variant);
+				component = Joaat(componentName);
+				if (component != g_LastHalloweenMask)
+					break;
+			}
+
+			if (!component)
+				return;
+
+			// Six RDO Halloween mask families (Freak, Horror, Masquerade, Slaughter,
+			// Creature and Swine), ten catalog variants each, exist for both MP sexes.
+			// Apply only the mask component after cloning the player's appearance; never
+			// randomize the full outfit because that can replace face/hair/clothing.
+			PED::_SET_PED_COMPONENT_ENABLED(clone, component, true, true, true);
+			PED::_UPDATE_PED_VARIATION(clone, 0, 1, 1, 1, 0);
+			g_LastHalloweenMask = component;
+			LOG(INFO) << "[ManualClone] RDO Halloween mask applied: " << componentName << " (" << component << ")";
+		}
+
+		void ConfigureBleedout(int clone)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
+				return;
+
+			// Use RDR2's own incapacitation/writhe system. The clone still has 800 HP;
+			// these calls only change what happens when it reaches the dying state.
+			PED::SET_PED_CAN_BE_INCAPACITATED(clone, true);
+			PED::_SET_PED_INCAPACITATION_MODIFIERS(clone, true, kIncapacitationThreshold, kBleedOutMilliseconds, 0);
+			PED::_SET_PED_INCAPACITATION_TOTAL_BLEED_OUT_DURATION(clone, kBleedOutSeconds);
+			PED::_SET_PED_WRITHING_DURATION(clone, 8.0f, kBleedOutSeconds, 0);
+			PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
 		}
 
 		int GetPlayerMountHandle()
@@ -287,7 +355,6 @@ namespace YimMenu::Submenus
 		{
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
 				return 0;
-
 			const Vector3 origin = ENTITY::GET_ENTITY_COORDS(clone, true, false);
 			int best{};
 			float bestDistance = radius;
@@ -312,7 +379,6 @@ namespace YimMenu::Submenus
 		{
 			if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner))
 				return 0;
-
 			const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
 			int best{};
 			float bestDistance = kBodyguardScanRadius;
@@ -325,7 +391,6 @@ namespace YimMenu::Submenus
 					continue;
 				if (!PED::IS_PED_IN_COMBAT(handle, owner) && !PED::IS_PED_IN_COMBAT(owner, handle))
 					continue;
-
 				const float distance = Distance(ownerPos, ENTITY::GET_ENTITY_COORDS(handle, true, false));
 				if (distance < bestDistance)
 				{
@@ -352,7 +417,7 @@ namespace YimMenu::Submenus
 
 		bool IsHeadDamageBone(int ped, int damageBone)
 		{
-			static constexpr std::array<int, 2> kHeadBones{21030, 27981}; // SKEL_Head, OH_Head
+			static constexpr std::array<int, 2> kHeadBones{21030, 27981};
 			return DamageBoneMatches(ped, damageBone, kHeadBones);
 		}
 
@@ -367,21 +432,16 @@ namespace YimMenu::Submenus
 		{
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || !lastDamageBone)
 				return;
-
 			if (IsHeadDamageBone(clone, lastDamageBone))
 			{
 				PED::EXPLODE_PED_HEAD(clone, weapon ? weapon : Joaat("WEAPON_REPEATER_CARBINE"));
-				LOG(INFO) << "[ManualClone] fatal head hit: forced head explosion";
+				LOG(INFO) << "[ManualClone] post-bleedout head gore applied";
 				return;
 			}
-
 			if (IsTorsoDamageBone(clone, lastDamageBone))
 			{
-				// RDR2 does not expose a reliable script native that can detach every limb
-				// from every MetaPed. Use the game's heavy-carcass damage pack instead;
-				// actual limb detachment remains dependent on the ped fragment definition.
 				PED::APPLY_PED_DAMAGE_PACK(clone, "PD_Human_carcass_Hvy", 1.0f, 1.0f);
-				LOG(INFO) << "[ManualClone] fatal torso hit: applied heavy carcass gore";
+				LOG(INFO) << "[ManualClone] post-bleedout torso gore applied";
 			}
 		}
 
@@ -396,20 +456,38 @@ namespace YimMenu::Submenus
 			PED::SET_PED_SEEING_RANGE(clone, options.ExtremelyHostile ? 500.0f : 220.0f);
 			PED::SET_PED_HEARING_RANGE(clone, options.ExtremelyHostile ? 500.0f : 220.0f);
 			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, options.ExtremelyHostile ? 1.45f : 1.15f);
-
 			for (int attribute : {5, 13, 21, 25, 31, 39, 41, 42, 46, 49, 54, 58, 63, 68, 78, 80, 81, 91, 92, 93, 113, 115})
 				PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, true);
-
-			// Deliberately do not enable CA_PERFECT_ACCURACY (27): the selected weapon
-			// profile must remain 89 for long guns and 60 for pistols/revolvers.
 			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, false);
+		}
+
+		bool RecoverIntoBleedout(int clone)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
+				return false;
+
+			// A very large hit can bypass the normal incapacitation transition. Recover
+			// the local shell at minimum health once, then hand it back to the native
+			// incapacitation system so the final hit produces agony instead of an
+			// immediate corpse. Blood/bullet decals already on the ped are preserved.
+			PED::RESURRECT_PED(clone);
+			PED::REVIVE_INJURED_PED(clone);
+			if (!ENTITY::DOES_ENTITY_EXIST(clone))
+				return false;
+			ENTITY::SET_ENTITY_HEALTH(clone, 2, 0);
+			ConfigureBleedout(clone);
+			PED::SET_PED_TO_RAGDOLL(clone, 900, 900, 0, false, false, false);
+			return true;
 		}
 
 		void RunCloneBrain(int clone, int owner, CloneOptions options, Hash weapon)
 		{
 			int currentTarget{};
 			int lastDamageBone{};
+			bool fatalRecoveryUsed = false;
+			bool sawIncapacitation = false;
 			auto nextRetask = std::chrono::steady_clock::now();
+			auto fallbackDeathAt = std::chrono::steady_clock::time_point::max();
 
 			while (clone && ENTITY::DOES_ENTITY_EXIST(clone))
 			{
@@ -417,15 +495,48 @@ namespace YimMenu::Submenus
 				if (PED::GET_PED_LAST_DAMAGE_BONE(clone, &damageBone) && damageBone)
 					lastDamageBone = damageBone;
 
+				const bool incapacitated = PED::IS_PED_INCAPACITATED(clone);
+				if (incapacitated)
+				{
+					if (!sawIncapacitation)
+					{
+						sawIncapacitation = true;
+						currentTarget = 0;
+						PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
+						LOG(INFO) << "[ManualClone] entered native incapacitation/bleedout";
+					}
+					ScriptMgr::Yield(100ms);
+					continue;
+				}
+
 				if (ENTITY::IS_ENTITY_DEAD(clone))
 				{
+					if (!sawIncapacitation && !fatalRecoveryUsed)
+					{
+						fatalRecoveryUsed = RecoverIntoBleedout(clone);
+						if (fatalRecoveryUsed)
+						{
+							fallbackDeathAt = std::chrono::steady_clock::now() + 10s;
+							LOG(INFO) << "[ManualClone] fatal hit bypassed incap; recovered for bleedout fallback";
+							ScriptMgr::Yield(100ms);
+							continue;
+						}
+					}
+
 					if (options.FatalGore)
 						ApplyFatalGore(clone, lastDamageBone, weapon);
 					break;
 				}
 
 				const auto now = std::chrono::steady_clock::now();
-				if (now >= nextRetask)
+				if (fatalRecoveryUsed && !sawIncapacitation && now >= fallbackDeathAt)
+				{
+					ENTITY::SET_ENTITY_HEALTH(clone, 0, 0);
+					ScriptMgr::Yield(100ms);
+					continue;
+				}
+
+				if (!fatalRecoveryUsed && now >= nextRetask)
 				{
 					if (options.ExtremelyHostile)
 						currentTarget = FindNearestHostileTarget(clone, owner, kHostileScanRadius);
@@ -435,13 +546,9 @@ namespace YimMenu::Submenus
 						currentTarget = 0;
 
 					if (currentTarget && IsValidCombatTarget(currentTarget, clone, owner))
-					{
 						TASK::TASK_COMBAT_PED(clone, currentTarget, 0, 16);
-					}
 					else if (options.Bodyguard && owner && ENTITY::DOES_ENTITY_EXIST(owner))
-					{
 						TASK::TASK_FOLLOW_TO_OFFSET_OF_ENTITY(clone, owner, 1.5f, -2.0f, 0.0f, 1.2f, -1, 2.0f, true, true, false, true, true, true);
-					}
 
 					nextRetask = now + (options.ExtremelyHostile ? 350ms : 700ms);
 				}
@@ -477,7 +584,6 @@ namespace YimMenu::Submenus
 			auto self = Self::GetPed();
 			if (!self.IsValid() || self.GetHealth() <= 0)
 				return;
-
 			const int selfHandle = self.GetHandle();
 			if (!selfHandle || !ENTITY::DOES_ENTITY_EXIST(selfHandle))
 				return;
@@ -493,6 +599,8 @@ namespace YimMenu::Submenus
 			ENTITY::SET_ENTITY_MAX_HEALTH(clone, kCloneHealth);
 			ENTITY::SET_ENTITY_HEALTH(clone, kCloneHealth, 0);
 			ApplyLocalPlayerPromptName(clone);
+			ApplyRandomHalloweenMask(clone);
+			ConfigureBleedout(clone);
 
 			options.WeaponIndex = std::clamp(options.WeaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
 			const Hash weapon = EquipCloneWeapon(clone, options.WeaponIndex);
@@ -502,20 +610,17 @@ namespace YimMenu::Submenus
 			ConfigureCloneCombat(clone, options, kCloneWeapons[options.WeaponIndex].HashName);
 			g_ManagedClones.push_back(clone);
 
-			if (options.ExtremelyHostile || options.Bodyguard)
-			{
-				FiberPool::Push([clone, selfHandle, options, weapon] {
-					RunCloneBrain(clone, selfHandle, options, weapon);
-				});
-			}
-			else
-			{
+			if (!options.ExtremelyHostile && !options.Bodyguard)
 				TASK::CLEAR_PED_TASKS(clone, true, false);
-			}
+
+			// Always run the brain: passive clones still need the dying/bleedout monitor.
+			FiberPool::Push([clone, selfHandle, options, weapon] {
+				RunCloneBrain(clone, selfHandle, options, weapon);
+			});
 
 			LOG(INFO) << "[ManualClone] ready; handle=" << clone << "; weapon=" << weapon
 			          << "; bodyguard=" << options.Bodyguard << "; hostile=" << options.ExtremelyHostile;
-			Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Clone criado." : "Clone created.", NotificationType::Success, 2000);
+			Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Clone criado com máscara Halloween aleatória." : "Clone created with a random Halloween mask.", NotificationType::Success, 2200);
 		}
 
 		void SpawnManualCloneNearPlayer(CloneOptions options)
@@ -523,7 +628,6 @@ namespace YimMenu::Submenus
 			auto self = Self::GetPed();
 			if (!self.IsValid())
 				return;
-
 			const int selfHandle = self.GetHandle();
 			const Vector3 selfPos = self.GetPosition();
 			const float heading = ENTITY::GET_ENTITY_HEADING(selfHandle);
@@ -635,7 +739,6 @@ namespace YimMenu::Submenus
 			CAM::RENDER_SCRIPT_CAMS(false, true, 350, true, true, 0);
 			CAM::DESTROY_CAM(camera, false);
 			STREAMING::CLEAR_FOCUS();
-
 			self.SetFrozen(false);
 			self.SetVisible(true);
 			if (reopenMenu && !GUI::IsOpen())
@@ -678,13 +781,16 @@ namespace YimMenu::Submenus
 				ImGui::SeparatorText(Localization::IsPortuguese() ? "COMPORTAMENTO" : "BEHAVIOR");
 				ImGui::Checkbox(Localization::IsPortuguese() ? "Guarda-costas" : "Bodyguard", &m_Bodyguard);
 				ImGui::Checkbox(Localization::IsPortuguese() ? "Extremamente hostil com NPCs/animais" : "Extremely hostile to NPCs/animals", &m_ExtremelyHostile);
-				ImGui::Checkbox(Localization::IsPortuguese() ? "Gore fatal conforme área atingida" : "Fatal gore based on hit area", &m_FatalGore);
+				ImGui::Checkbox(Localization::IsPortuguese() ? "Gore final após a agonia" : "Final gore after bleedout", &m_FatalGore);
 				ImGui::TextWrapped("%s", Localization::IsPortuguese() ?
-				    "Modo hostil procura alvos não-jogadores em até 500 m. Outros jogadores online nunca são escolhidos como alvo. Rifles, repetidoras e snipers usam precisão 89; pistolas e revólveres usam 60." :
-				    "Hostile mode searches for non-player targets up to 500 m away. Other online players are never selected. Rifles, repeaters and snipers use 89 accuracy; pistols and revolvers use 60.");
+				    "O clone mantém 800 de vida. Ao chegar ao estado fatal, usa a incapacitação/sangramento nativa do RDR2 e agoniza antes de morrer. Modo hostil procura NPCs/animais em até 500 m; jogadores online nunca são alvo." :
+				    "The clone keeps 800 health. At the fatal state it uses RDR2's native incapacitation/bleedout and writhes before dying. Hostile mode searches NPCs/animals up to 500 m; online players are never targeted.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
-				    "Variantes marcadas como História/Pistoleiro dependem de o jogo ter o asset disponível nessa sessão." :
-				    "Story/Gunslinger variants depend on the game having that asset available in the current session.");
+				    "Cada clone recebe uma máscara Halloween do Online aleatória: Freak, Horror, Masquerade, Slaughter, Creature ou Swine, com variações de cor." :
+				    "Each clone receives a random Online Halloween mask: Freak, Horror, Masquerade, Slaughter, Creature or Swine, including color variants.");
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
+				    "Rifles/repetidoras/snipers: precisão 89. Pistolas/revólveres: 60. Variantes História/Pistoleiro dependem do asset da sessão." :
+				    "Rifles/repeaters/snipers: 89 accuracy. Pistols/revolvers: 60. Story/Gunslinger variants depend on the session asset.");
 
 				ImGui::Spacing();
 				ImGui::SeparatorText(Localization::IsPortuguese() ? "POSIÇÃO" : "POSITION");
@@ -717,7 +823,7 @@ namespace YimMenu::Submenus
 
 			std::string_view GetMenuDescription() const override
 			{
-				return Localization::IsPortuguese() ? "Cria clones locais, escolhe arma, comportamento e posição por câmera livre." : "Creates local clones with selectable weapon, behavior and free-camera placement.";
+				return Localization::IsPortuguese() ? "Cria clones locais com arma, IA, freecam, máscara Halloween aleatória e morte por sangramento." : "Creates local clones with weapon, AI, freecam, random Halloween mask and bleedout death.";
 			}
 
 			bool RequiresImGuiEditor() const override
@@ -727,7 +833,7 @@ namespace YimMenu::Submenus
 
 			float GetPreferredEditorHeight() const override
 			{
-				return 650.0f;
+				return 690.0f;
 			}
 		};
 	}
