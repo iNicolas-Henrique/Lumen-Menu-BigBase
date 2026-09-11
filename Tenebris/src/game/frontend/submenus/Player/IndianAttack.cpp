@@ -18,11 +18,14 @@ namespace YimMenu::Features
         using Clock = std::chrono::steady_clock;
 
         constexpr float kRiotRadius = 115.0f;
+        constexpr float kRiotRadiusSq = kRiotRadius * kRiotRadius;
+        constexpr float kMeleeFinishDistance = 2.15f;
+        constexpr float kMeleeFinishDistanceSq = kMeleeFinishDistance * kMeleeFinishDistance;
         constexpr float kCloneSpawnMin = 5.0f;
         constexpr float kCloneSpawnMax = 10.0f;
         constexpr int kCloneHealth = 800;
-        constexpr auto kScanInterval = std::chrono::milliseconds(350);
-        constexpr auto kRetaskInterval = std::chrono::milliseconds(850);
+        constexpr auto kScanInterval = std::chrono::milliseconds(500);
+        constexpr auto kRetaskInterval = std::chrono::milliseconds(1000);
 
         struct Fighter
         {
@@ -36,6 +39,7 @@ namespace YimMenu::Features
 
         std::vector<Fighter> g_Fighters;
         std::vector<int> g_Clones;
+        std::vector<int> g_LocalHumans;
         Clock::time_point g_NextScan{};
         Clock::time_point g_NextClone{};
         Clock::time_point g_NextLawClear{};
@@ -56,9 +60,12 @@ namespace YimMenu::Features
             return std::uniform_real_distribution<float>(min, max)(Rng());
         }
 
-        float Distance(const Vector3& a, const Vector3& b)
+        float DistanceSquared(const Vector3& a, const Vector3& b)
         {
-            return MISC::GET_DISTANCE_BETWEEN_COORDS(a.x, a.y, a.z, b.x, b.y, b.z, true);
+            const float dx = a.x - b.x;
+            const float dy = a.y - b.y;
+            const float dz = a.z - b.z;
+            return dx * dx + dy * dy + dz * dz;
         }
 
         bool IsLawPed(int ped)
@@ -126,7 +133,6 @@ namespace YimMenu::Features
             PED::SET_PED_COMBAT_ATTRIBUTES(ped, 17, false);
             PED::SET_PED_COMBAT_ATTRIBUTES(ped, 125, false);
 
-            // Strong against the local player, but intentionally not a one/two-punch kill.
             PED::SET_PED_TO_PLAYER_WEAPON_DAMAGE_MODIFIER(ped, clone ? 1.38f : 1.15f);
         }
 
@@ -161,7 +167,8 @@ namespace YimMenu::Features
                     continue;
                 }
 
-                if (Distance(ENTITY::GET_ENTITY_COORDS(handle, true, false), selfPos) <= kRiotRadius)
+                const Vector3 pedPos = ENTITY::GET_ENTITY_COORDS(handle, true, false);
+                if (DistanceSquared(pedPos, selfPos) <= kRiotRadiusSq)
                     result.push_back(handle);
             }
             return result;
@@ -169,7 +176,6 @@ namespace YimMenu::Features
 
         int ChooseTarget(int source, int selfHandle, const std::vector<int>& humans)
         {
-            // Most NPCs fight each other. A minority may decide to attack the player.
             if (RandomInt(1, 100) <= 18)
                 return selfHandle;
 
@@ -194,10 +200,15 @@ namespace YimMenu::Features
             if (!fighter.Ped || !ENTITY::DOES_ENTITY_EXIST(fighter.Ped) || ENTITY::IS_ENTITY_DEAD(fighter.Ped))
                 return;
 
-            if (!fighter.Target || !ENTITY::DOES_ENTITY_EXIST(fighter.Target) || ENTITY::IS_ENTITY_DEAD(fighter.Target) || fighter.Target == fighter.Ped)
+            const bool targetInvalid = !fighter.Target || !ENTITY::DOES_ENTITY_EXIST(fighter.Target) ||
+                ENTITY::IS_ENTITY_DEAD(fighter.Target) || fighter.Target == fighter.Ped;
+            if (targetInvalid)
+            {
                 fighter.Target = ChooseTarget(fighter.Ped, selfHandle, humans);
+                fighter.NextTask = now;
+            }
 
-            if (now >= fighter.NextTask || !PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target))
+            if (fighter.Target && now >= fighter.NextTask && !PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target))
             {
                 PED::SET_PED_COMBAT_MOVEMENT(fighter.Ped, 3);
                 PED::SET_PED_MOVE_RATE_OVERRIDE(fighter.Ped, fighter.Clone ? 1.72f : 1.45f);
@@ -209,17 +220,16 @@ namespace YimMenu::Features
             {
                 if (RandomInt(1, 100) <= 55)
                     PlayRiotVoice(fighter.Ped);
-                fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(2200, 5200));
+                fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(2600, 5600));
             }
 
-            // NPC-vs-NPC hits are intentionally lethal. This does not run when the target is the player.
-            if (fighter.Target != selfHandle && now >= fighter.NextHitCheck)
+            if (fighter.Target != selfHandle && fighter.Target && now >= fighter.NextHitCheck)
             {
                 const Vector3 a = ENTITY::GET_ENTITY_COORDS(fighter.Ped, true, false);
                 const Vector3 b = ENTITY::GET_ENTITY_COORDS(fighter.Target, true, false);
-                if (Distance(a, b) <= 2.15f && PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target))
+                if (DistanceSquared(a, b) <= kMeleeFinishDistanceSq && PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target))
                     ENTITY::SET_ENTITY_HEALTH(fighter.Target, 0, fighter.Ped);
-                fighter.NextHitCheck = now + std::chrono::milliseconds(520);
+                fighter.NextHitCheck = now + std::chrono::milliseconds(650);
             }
         }
 
@@ -272,9 +282,6 @@ namespace YimMenu::Features
                 return 0;
             }
 
-            // Copy the live player's visual state only after a valid local target exists.
-            // Do not randomize a freemode MetaPed after this: outfit presets can also
-            // replace body/head data and are what produced the bald default-looking clone.
             PED::CLONE_PED_TO_TARGET(selfHandle, clone);
             if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
             {
@@ -314,8 +321,6 @@ namespace YimMenu::Features
             ENTITY::SET_ENTITY_MAX_HEALTH(clone, kCloneHealth);
             ENTITY::SET_ENTITY_HEALTH(clone, kCloneHealth, 0);
 
-            // Keep the exact copied player appearance. Random MetaPed outfit presets
-            // can replace the freemode head/body and produce a bald white default ped.
             ArmRandomly(clone);
             ConfigureFighter(clone, true);
 
@@ -354,6 +359,7 @@ namespace YimMenu::Features
             }
             g_Fighters.clear();
             g_Clones.clear();
+            g_LocalHumans.clear();
             g_NextScan = {};
             g_NextClone = {};
             g_NextLawClear = {};
@@ -377,15 +383,14 @@ namespace YimMenu::Features
             if (now >= g_NextLawClear)
             {
                 SuppressLaw();
-                g_NextLawClear = now + std::chrono::milliseconds(500);
+                g_NextLawClear = now + std::chrono::milliseconds(750);
             }
-
-            const auto humans = CollectLocalHumans(selfHandle, selfPos);
 
             if (now >= g_NextScan)
             {
                 g_NextScan = now + kScanInterval;
-                for (int ped : humans)
+                g_LocalHumans = CollectLocalHumans(selfHandle, selfPos);
+                for (int ped : g_LocalHumans)
                 {
                     if (FindFighter(ped))
                         continue;
@@ -393,7 +398,7 @@ namespace YimMenu::Features
                     ConfigureFighter(ped, false);
                     Fighter fighter{};
                     fighter.Ped = ped;
-                    fighter.Target = ChooseTarget(ped, selfHandle, humans);
+                    fighter.Target = ChooseTarget(ped, selfHandle, g_LocalHumans);
                     fighter.NextTask = now;
                     fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(0, 1400));
                     fighter.NextHitCheck = now;
@@ -406,9 +411,9 @@ namespace YimMenu::Features
             }), g_Fighters.end());
 
             for (auto& fighter : g_Fighters)
-                Retask(fighter, selfHandle, humans, now);
+                Retask(fighter, selfHandle, g_LocalHumans, now);
 
-            SpawnClone(selfHandle, selfPos, humans, now);
+            SpawnClone(selfHandle, selfPos, g_LocalHumans, now);
         }
 
         void OnDisable() override
