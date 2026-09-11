@@ -49,6 +49,7 @@ namespace YimMenu::Submenus
 			int WeaponIndex{};
 			CloneMode Mode{CloneMode::Bodyguard};
 			int SourcePlayerId{-1};
+			bool Networked{};
 		};
 
 		struct SpawnPlacement
@@ -310,7 +311,7 @@ namespace YimMenu::Submenus
 			return PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(sourcePlayerId);
 		}
 
-		int CreateLocalCloneShell(int sourcePlayerId, int sourceHandle, const Vector3& spawn, float heading)
+		int CreateCloneShell(int sourcePlayerId, int sourceHandle, const Vector3& spawn, float heading, bool networked)
 		{
 			if (!IsSourcePlayerStable(sourcePlayerId, sourceHandle))
 				return 0;
@@ -319,10 +320,8 @@ namespace YimMenu::Submenus
 			if (!EnsureModelLoaded(model) || !IsSourcePlayerStable(sourcePlayerId, sourceHandle))
 				return 0;
 
-			LOG(INFO) << "[ManualClone] creating local-only shell; sourcePlayer=" << sourcePlayerId << "; model=" << model;
-			// isNetwork=false is intentional: the clone remains local to this client and
-			// is not registered as a network ped for other players in the session.
-			int clone = PED::CREATE_PED(model, spawn.x, spawn.y, spawn.z, heading, false, 0, 0, 0);
+			LOG(INFO) << "[ManualClone] creating shell; sourcePlayer=" << sourcePlayerId << "; model=" << model << "; networked=" << (networked ? "true" : "false");
+			int clone = PED::CREATE_PED(model, spawn.x, spawn.y, spawn.z, heading, networked, 0, 0, 0);
 			STREAMING::SET_MODEL_AS_NO_LONGER_NEEDED(model);
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
 			{
@@ -337,9 +336,9 @@ namespace YimMenu::Submenus
 				return 0;
 			}
 
-			// This is the only stage that copies a live MetaPed appearance. Keeping the
-			// source stable and the target local removes the most common stale-handle race.
-			LOG(INFO) << "[ManualClone] copying appearance to local shell; handle=" << clone;
+			// This is the only stage that copies a live MetaPed appearance. Keep the
+			// source handle stable immediately before the copy to avoid stale references.
+			LOG(INFO) << "[ManualClone] copying appearance to shell; handle=" << clone;
 			PED::CLONE_PED_TO_TARGET(sourceHandle, clone);
 			ScriptMgr::Yield();
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_A_PLAYER(clone))
@@ -890,7 +889,7 @@ namespace YimMenu::Submenus
 				return;
 			}
 
-			int clone = CreateLocalCloneShell(options.SourcePlayerId, sourcePed, spawn, heading);
+			int clone = CreateCloneShell(options.SourcePlayerId, sourcePed, spawn, heading, options.Networked);
 			if (!clone)
 			{
 				Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Não foi possível criar o clone com segurança." : "Could not create the clone safely.", NotificationType::Warning, 2600);
@@ -916,7 +915,9 @@ namespace YimMenu::Submenus
 
 			FiberPool::Push([clone, owner, options] { RunCloneBrain(clone, owner, options); });
 			const char* sourceName = PLAYER::GET_PLAYER_NAME(options.SourcePlayerId);
-			std::string msg = Localization::IsPortuguese() ? "Clone local criado" : "Local clone created";
+			std::string msg = Localization::IsPortuguese() ?
+			    (options.Networked ? "Clone de rede criado" : "Clone local criado") :
+			    (options.Networked ? "Network clone created" : "Local clone created");
 			if (sourceName && *sourceName) msg += std::string(" - ") + sourceName;
 			Notifications::Show("Tenebris", msg, NotificationType::Success, 2200);
 		}
@@ -1061,10 +1062,11 @@ namespace YimMenu::Submenus
 			int m_WeaponIndex{};
 			CloneMode m_Mode{CloneMode::Bodyguard};
 			int m_SourcePlayerId{-1};
+			bool m_Networked{};
 
 			CloneOptions GetOptions() const
 			{
-				CloneOptions out{m_WeaponIndex, m_Mode, m_SourcePlayerId};
+				CloneOptions out{m_WeaponIndex, m_Mode, m_SourcePlayerId, m_Networked};
 				if (out.SourcePlayerId < 0) out.SourcePlayerId = PLAYER::PLAYER_ID();
 				return out;
 			}
@@ -1138,11 +1140,18 @@ namespace YimMenu::Submenus
 				    "Sem gore forçado: dano, explosão de cabeça/torso e desmembramento ficam por conta do sistema normal do jogo." :
 				    "No forced gore: damage, head/torso destruction and dismemberment are left to the game's normal system.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
-				    "Cadáveres ficam saqueáveis por pelo menos 45 s e podem soltar a arma/munição. O clone é criado localmente (não-networked)." :
-				    "Corpses stay lootable for at least 45 s and may drop their weapon/ammo. The clone is created locally (non-networked).");
+				    "Cadáveres ficam saqueáveis por pelo menos 45 s e podem soltar a arma/munição." :
+				    "Corpses stay lootable for at least 45 s and may drop their weapon/ammo.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
 				    "Parado fora da estrada, o NPC usa o emote de cigarro do Online. Emotes sociais e luto raro continuam ativos." :
 				    "When idle off-road, the NPC uses the Online cigarette emote. Social emotes and rare mourning remain active.");
+
+				ImGui::Spacing();
+				ImGui::SeparatorText(Localization::IsPortuguese() ? "REDE" : "NETWORK");
+				ImGui::Checkbox(Localization::IsPortuguese() ? "Ativar Network (visível para outros)" : "Enable Network (visible to others)", &m_Networked);
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
+				    "Não: clone só no seu cliente. Sim: entidade de rede, outros jogadores podem receber/ver; pode haver mais desync/ownership." :
+				    "Off: clone exists only on your client. On: network entity that other players may receive/see; more desync/ownership is possible.");
 
 				ImGui::Spacing();
 				ImGui::SeparatorText(Localization::IsPortuguese() ? "POSIÇÃO" : "POSITION");
@@ -1167,9 +1176,9 @@ namespace YimMenu::Submenus
 
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Cria clones locais seus ou de jogadores da sessão com IA nativa, armas do Online, loot, emotes, cavalo, freecam e bleedout." : "Creates local clones of you or session players with native AI, Online weapons, loot, emotes, horse following, freecam and bleedout."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Cria clones seus ou de jogadores da sessão, locais ou em rede, com IA nativa, armas do Online, loot, emotes, cavalo, freecam e bleedout." : "Creates local or networked clones of you or session players with native AI, Online weapons, loot, emotes, horse following, freecam and bleedout."; }
 			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 790.0f; }
+			float GetPreferredEditorHeight() const override { return 835.0f; }
 		};
 	}
 
