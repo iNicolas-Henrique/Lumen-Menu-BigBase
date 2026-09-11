@@ -1,4 +1,5 @@
 #include "ManualClone.hpp"
+#include "ManualCloneEmotes.hpp"
 
 #include "core/frontend/Localization.hpp"
 #include "core/frontend/Notifications.hpp"
@@ -15,6 +16,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <random>
 #include <string>
@@ -78,12 +80,14 @@ namespace YimMenu::Submenus
 		constexpr float kApproachDistance = 72.0f;
 		constexpr float kHorseSearchRadius = 36.0f;
 		constexpr float kSocialRadius = 11.0f;
+		constexpr float kMourningRadius = 80.0f;
 		constexpr std::size_t kMaxActiveClones = 8;
 		constexpr float kBleedOutSeconds = 12.0f;
 		constexpr int kBleedOutMilliseconds = 12000;
 		constexpr int kIncapacitationThreshold = 20;
 		constexpr int kHalloweenMaskFamilies = 6;
 		constexpr int kHalloweenMaskVariantsPerFamily = 10;
+		constexpr int kMourningChancePercent = 22;
 		constexpr auto kPedCacheInterval = 450ms;
 		constexpr auto kBrainTick = 150ms;
 		constexpr auto kCombatDecisionInterval = 650ms;
@@ -91,6 +95,9 @@ namespace YimMenu::Submenus
 		constexpr auto kHorseDecisionInterval = 2500ms;
 		constexpr auto kIdleSmokeDelay = 10s;
 		constexpr auto kIdleLeaveDelay = 25s;
+		constexpr auto kMourningEmoteTime = 4500ms;
+		constexpr auto kMourningFleeTime = 7000ms;
+		constexpr auto kMourningCooldown = 45s;
 
 		constexpr std::array kCloneWeapons = {
 		    CloneWeapon{"Desarmado", "Unarmed", "WEAPON_UNARMED"},
@@ -178,6 +185,13 @@ namespace YimMenu::Submenus
 		bool g_BodyguardsBetrayed{};
 		std::uint32_t g_TotalSpawned{};
 
+		Clock::time_point g_NextMourningAllowed{};
+		int g_MourningClone{};
+		int g_MourningDeadClone{};
+		Clock::time_point g_MourningEmoteUntil{};
+		Clock::time_point g_MourningFleeUntil{};
+		bool g_MourningFleeIssued{};
+
 		std::mt19937& Rng()
 		{
 			static std::mt19937 rng{static_cast<std::mt19937::result_type>(Clock::now().time_since_epoch().count())};
@@ -197,9 +211,30 @@ namespace YimMenu::Submenus
 			return dx * dx + dy * dy + dz * dz;
 		}
 
+		ManagedClone* FindManagedClone(int ped)
+		{
+			auto it = std::find_if(g_ManagedClones.begin(), g_ManagedClones.end(), [ped](const ManagedClone& c) { return c.Ped == ped; });
+			return it == g_ManagedClones.end() ? nullptr : &*it;
+		}
+
 		bool IsManagedClone(int ped)
 		{
-			return std::any_of(g_ManagedClones.begin(), g_ManagedClones.end(), [ped](const ManagedClone& c) { return c.Ped == ped; });
+			return FindManagedClone(ped) != nullptr;
+		}
+
+		bool IsHostileManagedCloneForOwner(int ped)
+		{
+			auto* managed = FindManagedClone(ped);
+			return managed && managed->Mode == CloneMode::AttackOwner && managed->Ped && ENTITY::DOES_ENTITY_EXIST(managed->Ped) && !ENTITY::IS_ENTITY_DEAD(managed->Ped);
+		}
+
+		void ResetMourning()
+		{
+			g_MourningClone = 0;
+			g_MourningDeadClone = 0;
+			g_MourningEmoteUntil = {};
+			g_MourningFleeUntil = {};
+			g_MourningFleeIssued = false;
 		}
 
 		std::size_t ActiveCloneCount()
@@ -211,12 +246,15 @@ namespace YimMenu::Submenus
 
 		void PruneManagedClones(bool deleteDead)
 		{
+			const auto now = Clock::now();
 			int deadDeleted{};
 			g_ManagedClones.erase(std::remove_if(g_ManagedClones.begin(), g_ManagedClones.end(), [&](const ManagedClone& c) {
 				if (!c.Ped || !ENTITY::DOES_ENTITY_EXIST(c.Ped))
 					return true;
 				if (deleteDead && ENTITY::IS_ENTITY_DEAD(c.Ped) && deadDeleted < 4)
 				{
+					if (c.Ped == g_MourningDeadClone && now < g_MourningFleeUntil)
+						return false;
 					int ped = c.Ped;
 					PED::DELETE_PED(&ped);
 					++deadDeleted;
@@ -224,6 +262,9 @@ namespace YimMenu::Submenus
 				}
 				return false;
 			}), g_ManagedClones.end());
+
+			if (g_MourningClone && (!ENTITY::DOES_ENTITY_EXIST(g_MourningClone) || ENTITY::IS_ENTITY_DEAD(g_MourningClone) || now >= g_MourningFleeUntil))
+				ResetMourning();
 
 			const bool hasLivingGuard = std::any_of(g_ManagedClones.begin(), g_ManagedClones.end(), [](const ManagedClone& c) {
 				return c.Mode == CloneMode::Bodyguard && c.Ped && ENTITY::DOES_ENTITY_EXIST(c.Ped) && !ENTITY::IS_ENTITY_DEAD(c.Ped);
@@ -422,6 +463,21 @@ namespace YimMenu::Submenus
 			const float radiusSq = kGuardRadius * kGuardRadius;
 			int best{};
 			float bestDistanceSq = radiusSq;
+
+			// A clone created in "Attack only me" mode is an immediate threat to the owner.
+			// Bodyguards are explicitly allowed to fight these local managed clones.
+			for (const auto& managed : g_ManagedClones)
+			{
+				if (!managed.Ped || managed.Ped == clone || managed.Mode != CloneMode::AttackOwner || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
+					continue;
+				const float d = DistanceSquared(ownerPos, ENTITY::GET_ENTITY_COORDS(managed.Ped, true, false));
+				if (d < bestDistanceSq)
+				{
+					bestDistanceSq = d;
+					best = managed.Ped;
+				}
+			}
+
 			for (const auto& ped : GetCachedPeds())
 			{
 				if (!ped.Handle || ped.Player || ped.Dead || !IsValidNpcTarget(ped.Handle, clone, owner)) continue;
@@ -433,6 +489,8 @@ namespace YimMenu::Submenus
 					best = ped.Handle;
 				}
 			}
+
+			if (IsHostileManagedCloneForOwner(best)) return best;
 			return IsValidNpcTarget(best, clone, owner) ? best : 0;
 		}
 
@@ -510,16 +568,60 @@ namespace YimMenu::Submenus
 			return 0;
 		}
 
+		void PlayPlayerEmote(int clone, const ManualCloneEmotes::Definition& emote, bool force = false)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone)) return;
+			if (!force && PED::IS_PED_IN_COMBAT(clone, 0)) return;
+			TASK::TASK_PLAY_EMOTE_WITH_HASH(clone, emote.Category, 2, Joaat(emote.Name), true, true, false, false, false);
+		}
+
 		void PlayRareSocialReaction(int clone, bool insult = false)
 		{
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || PED::IS_PED_IN_COMBAT(clone, 0)) return;
-			static constexpr std::array<Hash, 4> social{
-			    Joaat("KIT_EMOTE_GREET_WAVENEAR_1"),
-			    Joaat("KIT_EMOTE_GREET_THUMBSUP_1"),
-			    Joaat("KIT_EMOTE_REACTION_DISAGREE_1"),
-			    Joaat("KIT_EMOTE_TAUNT_WAR_CRY_1")};
-			const Hash emote = insult ? Joaat("KIT_EMOTE_TAUNT_INSULT_1") : social[RandomInt(0, static_cast<int>(social.size()) - 1)];
-			TASK::TASK_PLAY_EMOTE_WITH_HASH(clone, 2, 0, emote, true, true, false, false, false);
+			if (insult)
+			{
+				const auto& emotes = ManualCloneEmotes::kInsultEmotes;
+				PlayPlayerEmote(clone, emotes[RandomInt(0, static_cast<int>(emotes.size()) - 1)]);
+			}
+			else
+			{
+				const auto& emotes = ManualCloneEmotes::kAllHumanPlayerEmotes;
+				PlayPlayerEmote(clone, emotes[RandomInt(0, static_cast<int>(emotes.size()) - 1)]);
+			}
+		}
+
+		void MaybeStartMourning(int deadClone, CloneMode deadMode)
+		{
+			if (!deadClone || !ENTITY::DOES_ENTITY_EXIST(deadClone)) return;
+			const auto now = Clock::now();
+			if ((g_MourningClone && now < g_MourningFleeUntil) || now < g_NextMourningAllowed) return;
+			if (RandomInt(1, 100) > kMourningChancePercent) return;
+
+			const Vector3 deadPos = ENTITY::GET_ENTITY_COORDS(deadClone, true, false);
+			const float radiusSq = kMourningRadius * kMourningRadius;
+			int mourner{};
+			float bestDistanceSq = radiusSq;
+			for (const auto& managed : g_ManagedClones)
+			{
+				if (!managed.Ped || managed.Ped == deadClone || managed.Mode != deadMode || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped) || PED::IS_PED_INCAPACITATED(managed.Ped))
+					continue;
+				const float d = DistanceSquared(deadPos, ENTITY::GET_ENTITY_COORDS(managed.Ped, true, false));
+				if (d < bestDistanceSq)
+				{
+					bestDistanceSq = d;
+					mourner = managed.Ped;
+				}
+			}
+			if (!mourner) return;
+
+			g_MourningClone = mourner;
+			g_MourningDeadClone = deadClone;
+			g_MourningEmoteUntil = now + kMourningEmoteTime;
+			g_MourningFleeUntil = g_MourningEmoteUntil + kMourningFleeTime;
+			g_MourningFleeIssued = false;
+			g_NextMourningAllowed = now + kMourningCooldown;
+			TASK::CLEAR_PED_TASKS(mourner, true, false);
+			PlayPlayerEmote(mourner, ManualCloneEmotes::kMourningEmote, true);
 		}
 
 		template <std::size_t N>
@@ -586,9 +688,10 @@ namespace YimMenu::Submenus
 			return weapon;
 		}
 
-		void TaskTacticalCombat(int clone, int target)
+		void TaskTacticalCombat(int clone, int target, int owner)
 		{
-			if (!IsValidNpcTarget(target, clone, PLAYER::PLAYER_PED_ID()) && target != PLAYER::PLAYER_PED_ID()) return;
+			const bool validTarget = target == owner || IsHostileManagedCloneForOwner(target) || IsValidNpcTarget(target, clone, owner);
+			if (!validTarget) return;
 			const float dSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(target, true, false));
 			if (dSq > kApproachDistance * kApproachDistance)
 			{
@@ -648,6 +751,7 @@ namespace YimMenu::Submenus
 			bool wandering{};
 			auto nextDecision = Clock::now();
 			auto nextSocial = Clock::now() + 3s;
+			auto nextIdleEmote = Clock::now() + 18s;
 			auto nextHorse = Clock::now();
 			auto idleSince = Clock::now();
 			auto fallbackDeathAt = Clock::time_point::max();
@@ -689,6 +793,8 @@ namespace YimMenu::Submenus
 						}
 					}
 					if (options.FatalGore) ApplyFatalGore(clone, lastDamageBone, weapon);
+					if (clone == g_MourningClone) ResetMourning();
+					MaybeStartMourning(clone, options.Mode);
 					break;
 				}
 
@@ -698,6 +804,35 @@ namespace YimMenu::Submenus
 					ENTITY::SET_ENTITY_HEALTH(clone, 0, 0);
 					ScriptMgr::Yield(kBrainTick);
 					continue;
+				}
+
+				// Only one same-faction clone mourns a death, and only rarely. It sobs,
+				// then runs away for a few seconds before returning to normal AI.
+				if (clone == g_MourningClone)
+				{
+					if (now < g_MourningEmoteUntil)
+					{
+						ScriptMgr::Yield(kBrainTick);
+						continue;
+					}
+					if (now < g_MourningFleeUntil)
+					{
+						if (!g_MourningFleeIssued)
+						{
+							TASK::CLEAR_PED_TASKS(clone, true, false);
+							if (g_MourningDeadClone && ENTITY::DOES_ENTITY_EXIST(g_MourningDeadClone))
+								TASK::TASK_SMART_FLEE_PED(clone, g_MourningDeadClone, 55.0f, 7000, 0, 3.0f, 0);
+							else
+								TASK::TASK_WANDER_STANDARD(clone, 1.0f, 0);
+							g_MourningFleeIssued = true;
+						}
+						ScriptMgr::Yield(kBrainTick);
+						continue;
+					}
+					ResetMourning();
+					currentTarget = 0;
+					issuedTarget = 0;
+					nextDecision = now;
 				}
 
 				CloneMode effectiveMode = options.Mode;
@@ -714,9 +849,18 @@ namespace YimMenu::Submenus
 				if (now >= nextDecision)
 				{
 					bool keepCurrent = currentTarget && ENTITY::DOES_ENTITY_EXIST(currentTarget) && !ENTITY::IS_ENTITY_DEAD(currentTarget) && IsWithinRange(clone, currentTarget, kTargetLeashRadius);
-					if (effectiveMode != CloneMode::AttackOwner && keepCurrent) keepCurrent = IsValidNpcTarget(currentTarget, clone, owner);
 					if (effectiveMode == CloneMode::Bodyguard && keepCurrent)
-						keepCurrent = PED::IS_PED_IN_COMBAT(currentTarget, owner) || PED::IS_PED_IN_COMBAT(owner, currentTarget) || ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(owner, currentTarget, true, true);
+					{
+						if (IsHostileManagedCloneForOwner(currentTarget))
+							keepCurrent = true;
+						else
+							keepCurrent = IsValidNpcTarget(currentTarget, clone, owner) &&
+							    (PED::IS_PED_IN_COMBAT(currentTarget, owner) || PED::IS_PED_IN_COMBAT(owner, currentTarget) || ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(owner, currentTarget, true, true));
+					}
+					else if (effectiveMode == CloneMode::FrenzyNpcs && keepCurrent)
+						keepCurrent = IsValidNpcTarget(currentTarget, clone, owner);
+					else if (effectiveMode == CloneMode::AttackOwner && keepCurrent)
+						keepCurrent = currentTarget == owner;
 
 					if (!keepCurrent)
 					{
@@ -732,7 +876,7 @@ namespace YimMenu::Submenus
 						idleSince = now;
 						if (issuedTarget != currentTarget || !PED::IS_PED_IN_COMBAT(clone, currentTarget) || !HasClearShot(clone, currentTarget))
 						{
-							TaskTacticalCombat(clone, currentTarget);
+							TaskTacticalCombat(clone, currentTarget, owner);
 							issuedTarget = currentTarget;
 						}
 					}
@@ -793,9 +937,15 @@ namespace YimMenu::Submenus
 				{
 					if (FindInteractingEmotePlayer(clone))
 						PlayRareSocialReaction(clone, false);
-					else if (!smoking && RandomInt(1, 100) <= 8)
-						TASK::TASK_PLAY_EMOTE_WITH_HASH(clone, 2, 0, Joaat("KIT_EMOTE_TAUNT_WAR_CRY_1"), true, true, false, false, false);
 					nextSocial = now + kSocialDecisionInterval;
+				}
+
+				if (now >= nextIdleEmote && !currentTarget && !smoking && !PED::IS_PED_IN_COMBAT(clone, 0))
+				{
+					// Ambient emotes stay deliberately rare so the clone's combat behavior wins.
+					if (RandomInt(1, 100) <= 5)
+						PlayRareSocialReaction(clone, false);
+					nextIdleEmote = now + 20s;
 				}
 
 				ScriptMgr::Yield(kBrainTick);
@@ -861,17 +1011,40 @@ namespace YimMenu::Submenus
 			auto self = Self::GetPed();
 			if (!self.IsValid()) return;
 			const int selfHandle = self.GetHandle();
-			const Vector3 selfPos = self.GetPosition();
 			const float heading = ENTITY::GET_ENTITY_HEADING(selfHandle);
-			const float radians = heading * 0.017453292519943295f;
-			const Vector3 spawn{selfPos.x - std::sin(radians) * 2.2f + std::cos(radians) * 1.4f, selfPos.y - std::cos(radians) * 2.2f - std::sin(radians) * 1.4f, selfPos.z + 0.3f};
+			// Positive local Y is directly in front of the player in RAGE.
+			const Vector3 spawn = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selfHandle, 0.0f, 3.0f, 0.25f);
 			SpawnManualCloneAt(options, spawn, heading);
+		}
+
+		bool GetFreecamAimPoint(const Vector3& position, const Vector3& rotation, int ignoreEntity, Vector3& out)
+		{
+			constexpr float kDegToRad = 0.017453292519943295f;
+			const float pitch = rotation.x * kDegToRad;
+			const float yaw = rotation.z * kDegToRad;
+			const float cp = std::cos(pitch);
+			const Vector3 direction{-std::sin(yaw) * cp, std::cos(yaw) * cp, std::sin(pitch)};
+			const Vector3 farPoint{position.x + direction.x * 1000.0f, position.y + direction.y * 1000.0f, position.z + direction.z * 1000.0f};
+
+			BOOL hit{};
+			Vector3 endCoords{};
+			Vector3 surfaceNormal{};
+			int hitEntity{};
+			const int ray = SHAPETEST::START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE(
+			    position.x, position.y, position.z,
+			    farPoint.x, farPoint.y, farPoint.z,
+			    511, ignoreEntity, 7);
+			SHAPETEST::GET_SHAPE_TEST_RESULT(ray, &hit, &endCoords, &surfaceNormal, &hitEntity);
+			if (!hit) return false;
+			out = endCoords;
+			return true;
 		}
 
 		bool PickCloneSpawnWithFreecam(SpawnPlacement& placement)
 		{
 			auto self = Self::GetPed();
 			if (!self.IsValid()) return false;
+			const int selfHandle = self.GetHandle();
 			const bool reopenMenu = GUI::IsOpen();
 			if (reopenMenu) GUI::Toggle();
 			int camera = CAM::CREATE_CAM("DEFAULT_SCRIPTED_CAMERA", 0);
@@ -889,7 +1062,9 @@ namespace YimMenu::Submenus
 			CAM::RENDER_SCRIPT_CAMS(true, true, 350, true, true, 0);
 			self.SetFrozen(true);
 			self.SetVisible(false);
-			Notifications::Show("Tenebris", Localization::IsPortuguese() ? "POSICIONAMENTO: mova a câmera; ENTER confirma; BACK cancela." : "PLACEMENT: move camera; ENTER confirms; BACK cancels.", NotificationType::Info, 5000);
+			Notifications::Show("Tenebris", Localization::IsPortuguese() ?
+			    "MIRA FIXA: o círculo branco marca onde o centro da tela aponta. ENTER cria ali; BACK cancela." :
+			    "FIXED AIM: the white circle marks where the screen center points. ENTER spawns there; BACK cancels.", NotificationType::Info, 6000);
 
 			bool accepted{};
 			float acceleration{};
@@ -898,6 +1073,7 @@ namespace YimMenu::Submenus
 				PAD::DISABLE_ALL_CONTROL_ACTIONS(0);
 				for (Hash control : {(Hash)NativeInputs::INPUT_LOOK_LR, (Hash)NativeInputs::INPUT_LOOK_UD, (Hash)NativeInputs::INPUT_LOOK_UP_ONLY, (Hash)NativeInputs::INPUT_LOOK_DOWN_ONLY, (Hash)NativeInputs::INPUT_LOOK_LEFT_ONLY, (Hash)NativeInputs::INPUT_LOOK_RIGHT_ONLY})
 					PAD::ENABLE_CONTROL_ACTION(0, control, true);
+
 				Vector3 delta{};
 				constexpr float speed = 0.12f;
 				if (PAD::IS_DISABLED_CONTROL_PRESSED(0, (Hash)NativeInputs::INPUT_MOVE_UP_ONLY)) delta.y += speed;
@@ -916,12 +1092,15 @@ namespace YimMenu::Submenus
 				CAM::SET_CAM_ROT(camera, rotation.x, rotation.y, rotation.z, 2);
 				STREAMING::SET_FOCUS_POS_AND_VEL(position.x, position.y, position.z, 0.0f, 0.0f, 0.0f);
 
-				Vector3 marker = position;
-				float groundZ{};
-				if (MISC::GET_GROUND_Z_FOR_3D_COORD(position.x, position.y, position.z + 100.0f, &groundZ, 0)) marker.z = groundZ;
-				else marker.z -= 1.0f;
-				GRAPHICS::_DRAW_MARKER(0x6903B113, marker.x, marker.y, marker.z + 0.03f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.25f, 1.25f, 1.25f, 255, 255, 255, 230, false, true, 2, false, nullptr, nullptr, false);
-				if (PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, (Hash)NativeInputs::INPUT_FRONTEND_ACCEPT))
+				Vector3 marker{};
+				const bool markerValid = GetFreecamAimPoint(position, rotation, selfHandle, marker);
+				if (markerValid)
+				{
+					// Large, bright white ground circle exactly under the fixed center aim point.
+					GRAPHICS::_DRAW_MARKER(0x6903B113, marker.x, marker.y, marker.z + 0.04f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.65f, 1.65f, 1.65f, 255, 255, 255, 245, false, true, 2, false, nullptr, nullptr, false);
+				}
+
+				if (PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, (Hash)NativeInputs::INPUT_FRONTEND_ACCEPT) && markerValid)
 				{
 					placement.Position = marker;
 					placement.Heading = rotation.z;
@@ -1042,18 +1221,18 @@ namespace YimMenu::Submenus
 				}
 				ImGui::Checkbox(Localization::IsPortuguese() ? "Gore final após a agonia" : "Final gore after bleedout", &m_FatalGore);
 				ImGui::TextWrapped("%s", Localization::IsPortuguese() ?
-				    "Guarda-costas reage a NPCs/animais que entrarem em combate com você, usa cobertura e não mira jogadores reais. Frenético caça somente NPCs em alcance moderado. Atacar somente eu faz o clone atacar apenas seu personagem." :
-				    "Bodyguard reacts to NPCs/animals fighting you, uses cover, and never targets real players. Frenzy hunts only NPCs at moderate range. Attack only me targets only your character.");
+				    "Guarda-costas reage a NPCs/animais que atacarem você e também enfrenta clones criados em 'Atacar somente eu'. Frenético caça somente NPCs. Atacar somente eu mira apenas seu personagem." :
+				    "Bodyguards react to NPCs/animals attacking you and also fight clones created in 'Attack only me'. Frenzy hunts NPCs only. Attack only me targets only your character.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
-				    "Alcance de combate reduzido (~135 m), linha de visão obrigatória para atirar, cobertura quando bloqueado/ferido e IA com cavalo/ociosidade." :
-				    "Reduced combat range (~135 m), clear line of sight before firing, cover when blocked/hurt, plus horse/idle AI.");
+				    "Interações sociais sorteiam o catálogo de emotes normais do RDO. Raramente, um único aliado chora por um clone do mesmo grupo morto e depois foge." :
+				    "Social interactions draw from the normal RDO player-emote catalog. Rarely, one same-group clone mourns a dead clone and then runs away.");
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
-				    "Se você bater em um guarda-costas, todos os guarda-costas vivos insultam e traem você. A cada 5 clones, até 4 cadáveres antigos são removidos." :
-				    "If you hit a bodyguard, all living bodyguards insult and betray you. Every 5 spawns, up to 4 old clone corpses are removed.");
+				    "Alcance de combate ~135 m, linha de visão obrigatória, cobertura, cavalo/ociosidade e remoção periódica de cadáveres continuam ativos." :
+				    "~135 m combat range, required line of sight, cover, horse/idle AI and periodic corpse cleanup remain active.");
 
 				ImGui::Spacing();
 				ImGui::SeparatorText(Localization::IsPortuguese() ? "POSIÇÃO" : "POSITION");
-				if (ImGui::Button(Localization::IsPortuguese() ? "CRIAR AO MEU LADO" : "CREATE NEXT TO ME", ImVec2(205.0f, 34.0f)))
+				if (ImGui::Button(Localization::IsPortuguese() ? "CRIAR NA MINHA FRENTE" : "CREATE IN FRONT OF ME", ImVec2(215.0f, 34.0f)))
 				{
 					const CloneOptions options = GetOptions();
 					FiberPool::Push([options] { SpawnManualCloneNearPlayer(options); });
@@ -1067,13 +1246,16 @@ namespace YimMenu::Submenus
 						if (PickCloneSpawnWithFreecam(placement)) SpawnManualCloneAt(options, placement.Position, placement.Heading);
 					});
 				}
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ?
+				    "Na Freecam, o círculo branco segue exatamente o ponto atingido pela mira fixa no centro da tela." :
+				    "In Freecam, the white circle follows the exact world point hit by the fixed center aim.");
 			}
 
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Cria clones locais seus ou de jogadores da sessão com IA tática, cobertura, cavalo, freecam e bleedout." : "Creates local clones of you or session players with tactical AI, cover, horse following, freecam and bleedout."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Cria clones locais seus ou de jogadores da sessão com IA tática, cobertura, emotes, cavalo, freecam e bleedout." : "Creates local clones of you or session players with tactical AI, cover, emotes, horse following, freecam and bleedout."; }
 			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 760.0f; }
+			float GetPreferredEditorHeight() const override { return 790.0f; }
 		};
 	}
 
