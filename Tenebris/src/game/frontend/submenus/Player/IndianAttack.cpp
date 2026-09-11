@@ -136,16 +136,12 @@ namespace YimMenu::Features
             PED::SET_PED_TO_PLAYER_WEAPON_DAMAGE_MODIFIER(ped, clone ? 1.38f : 1.15f);
         }
 
-        void PlayRiotVoice(int ped)
+        void PlayRareRiotShout(int ped)
         {
-            static const std::array<Hash, 6> emotes{
-                Joaat("KIT_EMOTE_TAUNT_WAR_CRY_1"),
-                Joaat("KIT_EMOTE_REACTION_FRIGHTENED_1"),
-                Joaat("KIT_EMOTE_REACTION_ANGRY_1"),
-                Joaat("KIT_EMOTE_REACTION_DISAGREE_1"),
-                Joaat("KIT_EMOTE_TAUNT_INSULT_1"),
-                Joaat("KIT_EMOTE_TAUNT_DANCE_1")};
-            TASK::TASK_PLAY_EMOTE_WITH_HASH(ped, 2, 0, emotes[RandomInt(0, static_cast<int>(emotes.size()) - 1)], true, true, false, false, false);
+            // Keep PMD social behavior to a short war cry only. Gesture-heavy emotes
+            // (dance, frightened, disagree, hand-raising reactions, etc.) are never
+            // issued here and this function is only called while the ped is out of combat.
+            TASK::TASK_PLAY_EMOTE_WITH_HASH(ped, 2, 0, Joaat("KIT_EMOTE_TAUNT_WAR_CRY_1"), true, true, false, false, false);
         }
 
         std::vector<int> CollectLocalHumans(int selfHandle, const Vector3& selfPos)
@@ -208,7 +204,8 @@ namespace YimMenu::Features
                 fighter.NextTask = now;
             }
 
-            if (fighter.Target && now >= fighter.NextTask && !PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target))
+            const bool fighting = fighter.Target && PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target);
+            if (fighter.Target && now >= fighter.NextTask && !fighting)
             {
                 PED::SET_PED_COMBAT_MOVEMENT(fighter.Ped, 3);
                 PED::SET_PED_MOVE_RATE_OVERRIDE(fighter.Ped, fighter.Clone ? 1.72f : 1.45f);
@@ -216,11 +213,13 @@ namespace YimMenu::Features
                 fighter.NextTask = now + kRetaskInterval;
             }
 
+            // Never interrupt a gunfight with social/gesture animations. Out of combat,
+            // a war cry is deliberately rare so the riot still has occasional shouting.
             if (now >= fighter.NextVoice)
             {
-                if (RandomInt(1, 100) <= 55)
-                    PlayRiotVoice(fighter.Ped);
-                fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(2600, 5600));
+                if (!fighting && (!fighter.Target || !PED::IS_PED_IN_COMBAT(fighter.Ped, fighter.Target)) && RandomInt(1, 100) <= 10)
+                    PlayRareRiotShout(fighter.Ped);
+                fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(8000, 15000));
             }
 
             if (fighter.Target != selfHandle && fighter.Target && now >= fighter.NextHitCheck)
@@ -329,7 +328,7 @@ namespace YimMenu::Features
             fighter.Clone = true;
             fighter.Target = ChooseTarget(clone, selfHandle, humans);
             fighter.NextTask = now;
-            fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(1200, 2600));
+            fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(8000, 15000));
             fighter.NextHitCheck = now;
             Retask(fighter, selfHandle, humans, now);
             g_Fighters.push_back(fighter);
@@ -400,7 +399,7 @@ namespace YimMenu::Features
                     fighter.Ped = ped;
                     fighter.Target = ChooseTarget(ped, selfHandle, g_LocalHumans);
                     fighter.NextTask = now;
-                    fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(0, 1400));
+                    fighter.NextVoice = now + std::chrono::milliseconds(RandomInt(8000, 15000));
                     fighter.NextHitCheck = now;
                     g_Fighters.push_back(fighter);
                 }
