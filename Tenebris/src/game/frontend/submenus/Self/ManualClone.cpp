@@ -288,7 +288,7 @@ namespace YimMenu::Submenus
 				const int handle = ped.GetHandle();
 				if (!handle)
 					continue;
-				g_PedCache.push_back({handle, ENTITY::GET_ENTITY_COORDS(handle, true, false), PED::IS_PED_A_PLAYER(handle), ENTITY::IS_ENTITY_DEAD(handle)});
+				g_PedCache.push_back({handle, ENTITY::GET_ENTITY_COORDS(handle, true, false), PED::IS_PED_A_PLAYER(handle) != 0, ENTITY::IS_ENTITY_DEAD(handle) != 0});
 			}
 			g_NextPedCacheRefresh = now + kPedCacheInterval;
 			return g_PedCache;
@@ -464,8 +464,6 @@ namespace YimMenu::Submenus
 			int best{};
 			float bestDistanceSq = radiusSq;
 
-			// A clone created in "Attack only me" mode is an immediate threat to the owner.
-			// Bodyguards are explicitly allowed to fight these local managed clones.
 			for (const auto& managed : g_ManagedClones)
 			{
 				if (!managed.Ped || managed.Ped == clone || managed.Mode != CloneMode::AttackOwner || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
@@ -806,8 +804,6 @@ namespace YimMenu::Submenus
 					continue;
 				}
 
-				// Only one same-faction clone mourns a death, and only rarely. It sobs,
-				// then runs away for a few seconds before returning to normal AI.
 				if (clone == g_MourningClone)
 				{
 					if (now < g_MourningEmoteUntil)
@@ -942,7 +938,6 @@ namespace YimMenu::Submenus
 
 				if (now >= nextIdleEmote && !currentTarget && !smoking && !PED::IS_PED_IN_COMBAT(clone, 0))
 				{
-					// Ambient emotes stay deliberately rare so the clone's combat behavior wins.
 					if (RandomInt(1, 100) <= 5)
 						PlayRareSocialReaction(clone, false);
 					nextIdleEmote = now + 20s;
@@ -1012,7 +1007,6 @@ namespace YimMenu::Submenus
 			if (!self.IsValid()) return;
 			const int selfHandle = self.GetHandle();
 			const float heading = ENTITY::GET_ENTITY_HEADING(selfHandle);
-			// Positive local Y is directly in front of the player in RAGE.
 			const Vector3 spawn = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selfHandle, 0.0f, 3.0f, 0.25f);
 			SpawnManualCloneAt(options, spawn, heading);
 		}
@@ -1096,7 +1090,6 @@ namespace YimMenu::Submenus
 				const bool markerValid = GetFreecamAimPoint(position, rotation, selfHandle, marker);
 				if (markerValid)
 				{
-					// Large, bright white ground circle exactly under the fixed center aim point.
 					GRAPHICS::_DRAW_MARKER(0x6903B113, marker.x, marker.y, marker.z + 0.04f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.65f, 1.65f, 1.65f, 255, 255, 255, 245, false, true, 2, false, nullptr, nullptr, false);
 				}
 
