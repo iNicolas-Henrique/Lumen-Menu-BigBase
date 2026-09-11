@@ -29,7 +29,7 @@ namespace YimMenu::Submenus
 		using Clock = std::chrono::steady_clock;
 		using namespace std::chrono_literals;
 
-		enum class CloneMode : int { Bodyguard = 0, FrenzyNpcs = 1, AttackOwner = 2 };
+		enum class CloneMode : int { Bodyguard = 0, FrenzyNpcs = 1, AttackOwner = 2, BrawlExpedition = 3 };
 
 		struct CloneWeapon { const char* LabelPt; const char* LabelEn; const char* HashName; };
 		struct CloneOptions
@@ -122,6 +122,8 @@ namespace YimMenu::Submenus
 		Clock::time_point g_NextPedCacheRefresh{};
 		bool g_BodyguardsBetrayed{};
 		std::uint32_t g_TotalSpawned{};
+		bool g_SessionBrawlRunning{};
+		std::uint32_t g_BrawlGeneration{};
 		Clock::time_point g_NextMourningAllowed{};
 		int g_MourningClone{};
 		int g_MourningDeadClone{};
@@ -165,6 +167,8 @@ namespace YimMenu::Submenus
 
 		void DeleteAllManagedClones()
 		{
+			++g_BrawlGeneration;
+			g_SessionBrawlRunning = false;
 			for (auto& managed : g_ManagedClones)
 			{
 				if (!managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped)) continue;
@@ -504,13 +508,15 @@ namespace YimMenu::Submenus
 			if (!clone || !owner || !ENTITY::DOES_ENTITY_EXIST(clone) || !ENTITY::DOES_ENTITY_EXIST(owner)) return;
 			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, true);
 			const float dSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(owner, true, false));
-			const bool far = dSq > 70.0f * 70.0f, veryFar = dSq > 180.0f * 180.0f;
-			if (now >= nextHorse && (GetPlayerMountHandle() || far)) { TryMountForFollow(clone, owner); nextHorse = now + kHorseDecisionInterval; }
+			const bool isFar = dSq > 70.0f * 70.0f, isVeryFar = dSq > 180.0f * 180.0f;
+			if (now >= nextHorse && (GetPlayerMountHandle() || isFar)) { TryMountForFollow(clone, owner); nextHorse = now + kHorseDecisionInterval; }
 			if (now < nextFollow || dSq <= 7.0f * 7.0f) return;
-			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, veryFar ? 1.65f : (far ? 1.45f : 1.1f));
-			TASK::TASK_FOLLOW_TO_OFFSET_OF_ENTITY(clone, owner, 1.8f, -2.8f, 0.0f, veryFar ? 5.0f : (far ? 4.0f : 2.4f), -1, 3.0f, true, true, false, true, true, true);
-			nextFollow = now + (far ? kFollowRefreshFar : kFollowRefreshNear);
+			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, isVeryFar ? 1.65f : (isFar ? 1.45f : 1.1f));
+			TASK::TASK_FOLLOW_TO_OFFSET_OF_ENTITY(clone, owner, 1.8f, -2.8f, 0.0f, isVeryFar ? 5.0f : (isFar ? 4.0f : 2.4f), -1, 3.0f, true, true, false, true, true, true);
+			nextFollow = now + (isFar ? kFollowRefreshFar : kFollowRefreshNear);
 		}
+
+#include "ManualCloneBrawl.inc"
 
 		void RunCloneBrain(int clone, int owner, CloneOptions options, Hash equippedWeapon)
 		{
@@ -686,8 +692,8 @@ namespace YimMenu::Submenus
 			CAM::SET_CAM_ACTIVE(camera, false); CAM::RENDER_SCRIPT_CAMS(false, true, 350, true, true, 0); CAM::DESTROY_CAM(camera, false); STREAMING::CLEAR_FOCUS(); self.SetFrozen(false); self.SetVisible(true); if (reopenMenu && !GUI::IsOpen()) GUI::Toggle();
 		}
 
-		const char* ModeLabelPt(CloneMode mode) { switch (mode) { case CloneMode::Bodyguard: return "Guarda-costas"; case CloneMode::FrenzyNpcs: return "Frenético contra NPCs"; case CloneMode::AttackOwner: return "Atacar somente eu"; } return "Guarda-costas"; }
-		const char* ModeLabelEn(CloneMode mode) { switch (mode) { case CloneMode::Bodyguard: return "Bodyguard"; case CloneMode::FrenzyNpcs: return "Frenzy against NPCs"; case CloneMode::AttackOwner: return "Attack only me"; } return "Bodyguard"; }
+		const char* ModeLabelPt(CloneMode mode) { switch (mode) { case CloneMode::Bodyguard: return "Guarda-costas"; case CloneMode::FrenzyNpcs: return "Frenético contra NPCs"; case CloneMode::AttackOwner: return "Atacar somente eu"; case CloneMode::BrawlExpedition: return "Batalha da sessão"; } return "Guarda-costas"; }
+		const char* ModeLabelEn(CloneMode mode) { switch (mode) { case CloneMode::Bodyguard: return "Bodyguard"; case CloneMode::FrenzyNpcs: return "Frenzy against NPCs"; case CloneMode::AttackOwner: return "Attack only me"; case CloneMode::BrawlExpedition: return "Session brawl"; } return "Bodyguard"; }
 
 		class ManualCloneItem final : public UIItem
 		{
@@ -721,6 +727,17 @@ namespace YimMenu::Submenus
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Emotes são full-body: armas são guardadas antes da animação e voltam depois. Arma realmente desarmada não é recriada." : "Emotes are full-body: weapons are stowed before the animation and return after it. A truly disarmed weapon is not recreated.");
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "REDE" : "NETWORK"); ImGui::Checkbox(Localization::IsPortuguese() ? "Ativar Network (visível para outros)" : "Enable Network (visible to others)", &m_Networked);
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Não: clone só no seu cliente. Sim: entidade de rede, outros podem receber/ver; pode haver mais desync/ownership." : "Off: clone exists only on your client. On: network entity others may receive/see; more desync/ownership is possible.");
+
+				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "EVENTO DA SESSÃO" : "SESSION EVENT");
+				if (ImGui::Button(Localization::IsPortuguese() ? "CLONAR TODOS: BATALHA + EXPEDIÇÃO" : "CLONE ALL: BRAWL + EXPEDITION", ImVec2(-1.0f, 36.0f)))
+				{
+					const CloneOptions options = GetOptions();
+					FiberPool::Push([options] { RunSessionCloneBrawl(options); });
+				}
+				ImGui::TextWrapped("%s", Localization::IsPortuguese() ? "Cria 1 clone por jogador ativo em duas fileiras, com spawn escalonado para reduzir travadas. Após 10 s, os dois grupos brigam usando a IA nativa. Sobreviventes pegam cavalo se houver, seguem para Armadillo ou Saint Denis e atacam NPCs humanos da cidade." : "Creates 1 clone per active player in two lines, with staggered spawning to reduce hitches. After 10 s, both groups fight with stock AI. Survivors use nearby horses, head to Armadillo or Saint Denis and attack human NPCs in the city.");
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "O duelo inicial é desarmado para preservar os 800 HP e evitar mortes instantâneas. A arma escolhida acima é equipada na expedição. 40% dos sobreviventes dormem 15 s uma única vez no caminho." : "The opening brawl is unarmed to preserve the 800 HP fights and avoid instant kills. The weapon selected above is equipped for the expedition. 40% of survivors sleep once for 15 seconds on the way.");
+				if (g_SessionBrawlRunning) ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Evento em andamento — APAGAR TODOS OS CLONES também cancela o controlador do evento." : "Event running — DELETE ALL CLONES also cancels the event controller.");
+
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "POSIÇÃO / LIMPEZA" : "POSITION / CLEANUP");
 				if (ImGui::Button(Localization::IsPortuguese() ? "CRIAR NA MINHA FRENTE" : "CREATE IN FRONT OF ME", ImVec2(215.0f, 34.0f))) { const CloneOptions options = GetOptions(); FiberPool::Push([options] { SpawnManualCloneNearPlayer(options); }); }
 				ImGui::SameLine(); if (ImGui::Button("FREECAM MULTI-SPAWN", ImVec2(225.0f, 34.0f))) { const CloneOptions options = GetOptions(); FiberPool::Push([options] { RunCloneSpawnFreecam(options); }); }
@@ -729,9 +746,9 @@ namespace YimMenu::Submenus
 			}
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clones seus ou da sessão com IA nativa, bando de guarda-costas, multi-spawn, loot e emotes." : "Clones of you or session players with stock AI, bodyguard group, multi-spawn, loot and emotes."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clones seus ou da sessão com IA nativa, guarda-costas, batalha coletiva, expedição, multi-spawn, loot e emotes." : "Clones of you or session players with stock AI, bodyguards, session brawl, expedition, multi-spawn, loot and emotes."; }
 			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 860.0f; }
+			float GetPreferredEditorHeight() const override { return 1010.0f; }
 		};
 	}
 	std::shared_ptr<UIItem> CreateManualCloneItem() { return std::make_shared<ManualCloneItem>(); }
