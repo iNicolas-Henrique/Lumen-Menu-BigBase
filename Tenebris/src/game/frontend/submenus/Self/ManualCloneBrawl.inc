@@ -24,8 +24,8 @@ struct SessionBrawlClone
 	Clock::time_point NextCelebrationAllowed{};
 };
 
-constexpr Vector3 kArmadilloDestination{-3687.866f, -2630.905f, -13.40f};
-constexpr Vector3 kSaintDenisDestination{2519.439f, -1309.522f, 48.985f};
+const Vector3 kArmadilloDestination{-3687.866f, -2630.905f, -13.40f};
+const Vector3 kSaintDenisDestination{2519.439f, -1309.522f, 48.985f};
 constexpr float kBrawlRowHalfGap = 6.0f;
 constexpr float kBrawlColumnSpacing = 2.8f;
 constexpr float kCityArrivalRadius = 165.0f;
