@@ -53,16 +53,59 @@ namespace YimMenu
 
 	void Settings::TickImpl()
 	{
+		static constexpr auto saveDebounce = std::chrono::milliseconds(150);
 		std::string pendingWrite;
 		{
 			std::lock_guard lock(m_Mutex);
 			while (!m_LateLoaders.empty())
 			{
 				if (auto component = std::move(m_LateLoaders.front()))
-				{
 					LoadComponentImpl(component);
-				}
+				m_LateLoaders.pop();
+			}
 
+			if (m_InitialLoadDone && ShouldSave())
+			{
+				const auto now = std::chrono::steady_clock::now();
+				if (m_NextSaveAt == std::chrono::steady_clock::time_point{})
+					m_NextSaveAt = now + saveDebounce;
+
+				if (now >= m_NextSaveAt)
+				{
+					for (auto& serializer : m_StateSerializers)
+						if (serializer->IsStateDirty())
+							SaveComponentImpl(serializer);
+
+					// Snapshot under the mutex; disk I/O happens after releasing it.
+					pendingWrite = m_Json.dump(4);
+					m_NextSaveAt = {};
+				}
+			}
+			else
+			{
+				m_NextSaveAt = {};
+			}
+		}
+
+		if (!pendingWrite.empty())
+		{
+			std::ofstream file(m_SettingsFile, std::ios::out | std::ios::trunc);
+			if (file.is_open())
+				file << pendingWrite;
+			else
+				LOG(WARNING) << "Unable to save settings file";
+		}
+	}
+
+	void Settings::FlushImpl()
+	{
+		std::string pendingWrite;
+		{
+			std::lock_guard lock(m_Mutex);
+			while (!m_LateLoaders.empty())
+			{
+				if (auto component = std::move(m_LateLoaders.front()))
+					LoadComponentImpl(component);
 				m_LateLoaders.pop();
 			}
 
@@ -71,24 +114,18 @@ namespace YimMenu
 				for (auto& serializer : m_StateSerializers)
 					if (serializer->IsStateDirty())
 						SaveComponentImpl(serializer);
-
-				// Build a stable snapshot while protected, then perform disk I/O after
-				// releasing the mutex so settings users are never blocked by the drive.
 				pendingWrite = m_Json.dump(4);
 			}
+			m_NextSaveAt = {};
 		}
 
 		if (!pendingWrite.empty())
 		{
 			std::ofstream file(m_SettingsFile, std::ios::out | std::ios::trunc);
 			if (file.is_open())
-			{
 				file << pendingWrite;
-			}
 			else
-			{
-				LOG(WARNING) << "Unable to save settings file";
-			}
+				LOG(WARNING) << "Unable to flush settings file";
 		}
 	}
 
@@ -112,13 +149,13 @@ namespace YimMenu
 
 	void Settings::SaveComponentImpl(IStateSerializer* serializer)
 	{
-		//LOG(VERBOSE) << "Saving component: " << serializer->GetSerializerComponentName();
 		serializer->SaveState(m_Json[serializer->GetSerializerComponentName()]);
 	}
 
 	void Settings::Reset()
 	{
 		m_Json = nlohmann::json::object();
+		m_NextSaveAt = {};
 
 		std::ofstream file(m_SettingsFile, std::ios::out | std::ios::trunc);
 		if (file.is_open())
