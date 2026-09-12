@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -55,5 +56,7 @@ namespace YimMenu
 		std::ofstream m_ConsoleOut;
 		File m_File = std::filesystem::path();
 		std::ofstream m_FileOut;
+		std::chrono::steady_clock::time_point m_NextConsoleFlush{};
+		std::chrono::steady_clock::time_point m_NextFileFlush{};
 	};
 }
