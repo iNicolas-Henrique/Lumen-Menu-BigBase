@@ -70,7 +70,7 @@ namespace YimMenu
 		AttemptCreateBackup();
 		OpenOutputStreams();
 
-		constexpr auto flushInterval = std::chrono::milliseconds(250);
+		static constexpr auto flushInterval = std::chrono::milliseconds(250);
 		Logger::Init();
 		Logger::AddSink([this](LogMessagePtr msg) {
 			if (!m_AttachConsole || !m_ConsoleOut.is_open())
