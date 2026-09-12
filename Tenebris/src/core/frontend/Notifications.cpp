@@ -1,9 +1,11 @@
 #include "Notifications.hpp"
 
+#include "PerformanceOptions.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "util/Joaat.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <mutex>
 
 namespace YimMenu
@@ -57,7 +59,7 @@ namespace YimMenu
 		notification.m_Duration = duration;
 		notification.m_Identifier = message_id;
 		notification.m_AnimationOffset = placement == NotificationPlacement::TopCenter ? -22.0f : -m_CardSizeX;
-		notification.m_Alpha = 0.0f;
+		notification.m_Alpha = PerformanceOptions::NotificationAnimations.GetState() ? 0.0f : 1.0f;
 
 		if (context_function)
 		{
@@ -83,7 +85,7 @@ namespace YimMenu
 		return false;
 	}
 
-	static void DrawNotification(Notification& notification, int stackPosition)
+	static void DrawNotification(Notification& notification, int stackPosition, float elapsedMs)
 	{
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		if (!viewport || notification.m_Alpha <= 0.002f)
@@ -114,16 +116,18 @@ namespace YimMenu
 		ImGui::SetNextWindowPos(ImVec2(xPos, yPos), ImGuiCond_Always);
 		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, std::clamp(notification.m_Alpha, 0.0f, 1.0f));
 
-		std::string windowTitle = std::format("##TenebrisNotification_{}", notification.m_Identifier);
-		ImGui::Begin(windowTitle.c_str(), nullptr,
+		char windowTitle[64]{};
+		std::snprintf(windowTitle, sizeof(windowTitle), "##TenebrisNotification_%u", static_cast<unsigned>(notification.m_Identifier));
+		ImGui::Begin(windowTitle, nullptr,
 		    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
 		        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
 		        ImGuiWindowFlags_NoFocusOnAppearing);
 
-		const float timeElapsed = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
-		    std::chrono::system_clock::now() - notification.m_CreatedOn).count());
-		const float depletionProgress = std::clamp(1.0f - (timeElapsed / static_cast<float>(std::max(notification.m_Duration, 1))), 0.0f, 1.0f);
-		ImGui::ProgressBar(depletionProgress, ImVec2(-1, 3.5f), "");
+		if (PerformanceOptions::NotificationProgressBar.GetState())
+		{
+			const float depletionProgress = std::clamp(1.0f - (elapsedMs / static_cast<float>(std::max(notification.m_Duration, 1))), 0.0f, 1.0f);
+			ImGui::ProgressBar(depletionProgress, ImVec2(-1, 3.5f), "");
+		}
 
 		if (notification.m_Type == NotificationType::Info)
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -160,10 +164,16 @@ namespace YimMenu
 			int leftPosition = 0;
 			int centerPosition = 0;
 			int rightPosition = 0;
-			float delta = ImGui::GetIO().DeltaTime;
-			if (delta <= 0.0f)
-				delta = 1.0f / 60.0f;
-			delta = std::clamp(delta, 0.0f, 0.05f);
+			const bool animate = PerformanceOptions::NotificationAnimations.GetState();
+			float delta = 0.0f;
+			if (animate)
+			{
+				delta = ImGui::GetIO().DeltaTime;
+				if (delta <= 0.0f)
+					delta = 1.0f / 60.0f;
+				delta = std::clamp(delta, 0.0f, 0.05f);
+			}
+			const auto now = std::chrono::system_clock::now();
 
 			for (auto& [id, notification] : m_Notifications)
 			{
@@ -173,8 +183,22 @@ namespace YimMenu
 				else if (notification.m_Placement == NotificationPlacement::Right)
 					position = &rightPosition;
 
-				const auto elapsed = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
-				    std::chrono::system_clock::now() - notification.m_CreatedOn).count());
+				const float elapsed = static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(
+				    now - notification.m_CreatedOn).count());
+
+				if (!animate)
+				{
+					if (notification.m_Erasing || elapsed >= notification.m_Duration)
+					{
+						keysToErase.push_back(id);
+						continue;
+					}
+					notification.m_Alpha = 1.0f;
+					notification.m_AnimationOffset = 0.0f;
+					DrawNotification(notification, (*position)++, elapsed);
+					continue;
+				}
+
 				if (elapsed >= notification.m_Duration)
 					notification.m_Erasing = true;
 
@@ -194,7 +218,7 @@ namespace YimMenu
 						keysToErase.push_back(id);
 				}
 
-				DrawNotification(notification, (*position)++);
+				DrawNotification(notification, (*position)++, elapsed);
 			}
 		}
 
