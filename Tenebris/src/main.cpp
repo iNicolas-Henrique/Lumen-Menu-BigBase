@@ -81,6 +81,9 @@ namespace YimMenu
 			Sleep(25);
 		}
 
+		// A debounced settings write may still be pending if shutdown happens
+		// immediately after a UI change. Persist it before subsystems are torn down.
+		Settings::Flush();
 		LOG(INFO) << "Descarregando";
 
 		NativeHooks::Destroy();
