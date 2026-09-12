@@ -2,6 +2,7 @@
 
 #include "ResponsiveLayout.hpp"
 #include "UIItem.hpp"
+#include "core/frontend/PerformanceOptions.hpp"
 
 #include <Windows.h>
 #include <algorithm>
@@ -51,7 +52,16 @@ namespace YimMenu
 		if (g_Item == item)
 		{
 			if (g_Phase == TransitionPhase::Closing)
-				g_Phase = TransitionPhase::Opening;
+			{
+				if (PerformanceOptions::EditorAnimations.GetState())
+					g_Phase = TransitionPhase::Opening;
+				else
+				{
+					g_Phase = TransitionPhase::Open;
+					g_EditorAlpha = 1.0f;
+					g_SlideProgress = 1.0f;
+				}
+			}
 			return;
 		}
 
@@ -60,16 +70,33 @@ namespace YimMenu
 
 		g_Item = item;
 		g_Item->OnEditorOpened();
-		g_Phase = TransitionPhase::Opening;
-		g_EditorAlpha = 0.0f;
-		g_SlideProgress = 0.0f;
 		g_ApplyEditorSize = true;
+
+		if (PerformanceOptions::EditorAnimations.GetState())
+		{
+			g_Phase = TransitionPhase::Opening;
+			g_EditorAlpha = 0.0f;
+			g_SlideProgress = 0.0f;
+		}
+		else
+		{
+			g_Phase = TransitionPhase::Open;
+			g_EditorAlpha = 1.0f;
+			g_SlideProgress = 1.0f;
+		}
 	}
 
 	void AdvancedEditor::Close()
 	{
 		if (!g_Item || g_Phase == TransitionPhase::Closing)
 			return;
+
+		if (!PerformanceOptions::EditorAnimations.GetState())
+		{
+			FinishClose();
+			return;
+		}
+
 		g_Phase = TransitionPhase::Closing;
 		g_SlideProgress = 1.0f;
 	}
@@ -87,6 +114,19 @@ namespace YimMenu
 	{
 		if (!g_Item)
 			return;
+
+		if (!PerformanceOptions::EditorAnimations.GetState())
+		{
+			if (g_Phase == TransitionPhase::Closing)
+			{
+				FinishClose();
+				return;
+			}
+			g_Phase = TransitionPhase::Open;
+			g_EditorAlpha = 1.0f;
+			g_SlideProgress = 1.0f;
+			return;
+		}
 
 		float delta = ImGui::GetIO().DeltaTime;
 		if (delta <= 0.0f)
@@ -144,16 +184,15 @@ namespace YimMenu
 		const ImVec2 origin = viewport->WorkPos;
 		const float gap = std::clamp(display.x * 0.018f, 10.0f, 22.0f);
 		const auto classicLayout = GetResponsiveMenuLayout();
+		(void)classicLayout;
 
-		// Editors intentionally open large by default. At 1280x720 this is roughly
-		// the same visual footprint as the reference animation/music window.
 		const float defaultWidth = std::clamp(display.x * 0.84f, 650.0f, display.x - gap * 2.0f);
 		const float maxHeight = std::max(280.0f, display.y - gap * 2.0f);
 		const float requestedHeight = std::max(g_Item->GetPreferredEditorHeight(), display.y * 0.78f);
 		const float defaultHeight = std::clamp(requestedHeight, 420.0f, maxHeight);
 		const float centeredX = origin.x + (display.x - defaultWidth) * 0.5f;
 		const float offscreenX = origin.x + display.x + gap;
-		const float slide = SmoothStep(g_SlideProgress);
+		const float slide = PerformanceOptions::EditorAnimations.GetState() ? SmoothStep(g_SlideProgress) : 1.0f;
 		const float editorX = offscreenX + (centeredX - offscreenX) * slide;
 		const ImVec2 defaultSize(defaultWidth, defaultHeight);
 		const ImVec2 editorPosition(editorX, origin.y + (display.y - defaultHeight) * 0.5f);
@@ -219,7 +258,7 @@ namespace YimMenu
 
 	float AdvancedEditor::GetEditorAlpha()
 	{
-		return SmoothStep(g_EditorAlpha);
+		return PerformanceOptions::EditorAnimations.GetState() ? SmoothStep(g_EditorAlpha) : g_EditorAlpha;
 	}
 
 	float AdvancedEditor::GetClassicMenuAlpha()
