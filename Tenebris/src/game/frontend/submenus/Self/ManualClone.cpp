@@ -30,6 +30,7 @@ namespace YimMenu::Submenus
 		using namespace std::chrono_literals;
 
 		enum class CloneMode : int { Bodyguard = 0, FrenzyNpcs = 1, AttackOwner = 2, BrawlExpedition = 3 };
+		enum class CloneActionState : int { Normal = 0, Following, Combat, Smoking, SocialEmote, GunTwirl, Mourning, Incapacitated };
 
 		struct CloneWeapon { const char* LabelPt; const char* LabelEn; const char* HashName; };
 		struct CloneWalkStyle { const char* LabelPt; const char* LabelEn; const char* Archetype; const char* MotionType; };
@@ -43,6 +44,7 @@ namespace YimMenu::Submenus
 			int Health{800};
 			float SeeingRange{220.0f};
 			int WalkStyleIndex{};
+			bool IdleGunTwirl{true};
 		};
 		struct CachedPed { int Handle{}; Vector3 Position{}; bool Player{}; bool Dead{}; };
 		struct ManagedClone
@@ -74,6 +76,8 @@ namespace YimMenu::Submenus
 		constexpr auto kFollowRefreshNear = 4500ms;
 		constexpr auto kFollowRefreshFar = 1600ms;
 		constexpr auto kFrenzyRoamRefresh = 4500ms;
+		constexpr auto kGunTwirlIdleDelay = 6s;
+		constexpr auto kGunTwirlTimeout = 5500ms;
 		constexpr auto kIdleSmokeDelay = 10s;
 		constexpr auto kMourningEmoteTime = 4500ms;
 		constexpr auto kMourningFleeTime = 7000ms;
@@ -83,6 +87,14 @@ namespace YimMenu::Submenus
 		constexpr auto kNormalEmoteTime = 3500ms;
 
 		inline constexpr ManualCloneEmotes::Definition kIdleSmokeEmote{"KIT_EMOTE_ACTION_SMOKE_CIGARETTE_1", 1};
+		constexpr std::array<const char*, 6> kGunTwirlVariations = {
+		    "REVERSE_SPIN",
+		    "SPIN_UP",
+		    "REVERSE_SPIN_UP",
+		    "ALTERNATING_FLIPS",
+		    "SHOULDER_TOSS",
+		    "FIGURE_EIGHT_TOSS",
+		};
 
 		constexpr std::array kCloneWeapons = {
 		    CloneWeapon{"Desarmado", "Unarmed", "WEAPON_UNARMED"},
@@ -450,6 +462,35 @@ namespace YimMenu::Submenus
 			WEAPON::GIVE_WEAPON_TO_PED(clone, desiredWeapon, 999, true, true, 0, false, 0.5f, 1.0f, 1.0f, false, 0, false);
 			WEAPON::SET_CURRENT_PED_WEAPON(clone, desiredWeapon, true, 0, false, false);
 		}
+		bool StartCloneGunTwirl(int clone, Hash desiredWeapon, std::string_view weaponName, Clock::time_point now, Clock::time_point& endsAt)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone)) return false;
+			if (!IsSidearm(weaponName) || !desiredWeapon || desiredWeapon == Joaat("WEAPON_UNARMED")) return false;
+			if (PED::IS_PED_IN_COMBAT(clone, 0) || PED::IS_PED_ON_MOUNT(clone) || TASK::IS_EMOTE_TASK_RUNNING(clone, 0) || ENTITY::GET_ENTITY_SPEED(clone) > 0.25f) return false;
+
+			EnsureCloneWeaponEquipped(clone, desiredWeapon);
+			Hash currentWeapon{};
+			if (!GetCurrentWeapon(clone, currentWeapon) || currentWeapon != desiredWeapon) return false;
+
+			constexpr int kTwirlSlot = 0;
+			const Hash twirlKit = Joaat("KIT_EMOTE_TWIRL_GUN");
+			const Hash variation = Joaat(kGunTwirlVariations[RandomInt(0, static_cast<int>(kGunTwirlVariations.size()) - 1)]);
+			TASK::CLEAR_PED_TASKS(clone, true, false);
+			WEAPON::_SET_ACTIVE_GUN_SPINNING_EQUIP_KIT_EMOTE_TWIRL(clone, twirlKit);
+			TASK::TASK_PLAY_EMOTE_WITH_HASH(clone, 4, 1, twirlKit, true, false, false, false, false);
+			WEAPON::_SET_ACTIVE_GUN_SPINNING_KIT_EMOTE_TWIRL(clone, kTwirlSlot, variation);
+			WEAPON::_SET_GUN_SPINNING_INVENTORY_SLOT_ID_ACTIVATE(clone, kTwirlSlot);
+			endsAt = now + kGunTwirlTimeout;
+			return true;
+		}
+		void StopCloneGunTwirl(int clone, Hash desiredWeapon, bool clearTasks)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone)) return;
+			WEAPON::_SET_ACTIVE_GUN_SPINNING_KIT_EMOTE_TWIRL(clone, 0, (Hash)0);
+			WEAPON::_SET_ACTIVE_GUN_SPINNING_EQUIP_KIT_EMOTE_TWIRL(clone, (Hash)0);
+			if (clearTasks && !ENTITY::IS_ENTITY_DEAD(clone)) TASK::CLEAR_PED_TASKS(clone, true, false);
+			if (!ENTITY::IS_ENTITY_DEAD(clone) && !PED::IS_PED_INCAPACITATED(clone)) EnsureCloneWeaponEquipped(clone, desiredWeapon);
+		}
 		void PlayFullBodyEmote(int clone, const ManualCloneEmotes::Definition& emote)
 		{
 			TASK::TASK_PLAY_EMOTE_WITH_HASH(clone, emote.Category, 2, Joaat(emote.Name), false, false, false, false, false);
@@ -583,10 +624,12 @@ namespace YimMenu::Submenus
 		void RunCloneBrain(int clone, int owner, CloneOptions options, Hash equippedWeapon)
 		{
 			int currentTarget{}, issuedTarget{}, lastHealth = ENTITY::GET_ENTITY_HEALTH(clone);
-			bool sawIncapacitation{}, insultedOnBetrayal{}, smoking{}, frenzyRoaming{}, followIssued{};
+			bool sawIncapacitation{}, insultedOnBetrayal{}, smokeUsedThisIdle{}, frenzyRoaming{}, followIssued{};
+			CloneActionState actionState{CloneActionState::Normal};
 			const float sightRange = std::clamp(options.SeeingRange, 20.0f, 500.0f);
 			const float targetLeashRadius = std::max(35.0f, sightRange * 1.20f);
-			auto nextDecision = Clock::now(), nextSocial = Clock::now() + 3s, nextIdleEmote = Clock::now() + 18s, nextHorse = Clock::now(), nextFollow = Clock::now(), nextRoam = Clock::now(), nextWeaponAudit = Clock::now(), idleSince = Clock::now();
+			const std::string_view selectedWeaponName = kCloneWeapons[std::clamp(options.WeaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1)].HashName;
+			auto nextDecision = Clock::now(), nextSocial = Clock::now() + 3s, nextIdleEmote = Clock::now() + 18s, nextHorse = Clock::now(), nextFollow = Clock::now(), nextRoam = Clock::now(), nextWeaponAudit = Clock::now(), idleSince = Clock::now(), gunTwirlEndsAt = Clock::time_point{}, nextGunTwirlAllowed = Clock::now() + kGunTwirlIdleDelay;
 			while (clone && ENTITY::DOES_ENTITY_EXIST(clone))
 			{
 				if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner)) break;
@@ -599,37 +642,76 @@ namespace YimMenu::Submenus
 
 				if (PED::IS_PED_INCAPACITATED(clone))
 				{
+					if (actionState == CloneActionState::GunTwirl) StopCloneGunTwirl(clone, equippedWeapon, true);
+					actionState = CloneActionState::Incapacitated;
 					if (!sawIncapacitation) { sawIncapacitation = true; currentTarget = 0; issuedTarget = 0; followIssued = false; PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false); }
 					ScriptMgr::Yield(kBrainTick); continue;
 				}
+				if (actionState == CloneActionState::Incapacitated)
+				{
+					actionState = CloneActionState::Normal; sawIncapacitation = false; idleSince = now; smokeUsedThisIdle = false; nextGunTwirlAllowed = now + kGunTwirlIdleDelay;
+				}
 				if (ENTITY::IS_ENTITY_DEAD(clone)) { MarkCloneDead(clone); if (clone == g_MourningClone) ResetMourning(); MaybeStartMourning(clone, options.Mode); break; }
 
-				if (now >= nextWeaponAudit)
-				{
-					EnsureCloneWeaponEquipped(clone, equippedWeapon);
-					nextWeaponAudit = now + kWeaponAuditInterval;
-				}
+				CloneMode effectiveMode = options.Mode;
+				if (options.Mode == CloneMode::Bodyguard && g_BodyguardsBetrayed) effectiveMode = CloneMode::AttackOwner;
 
 				if (clone == g_MourningClone)
 				{
+					if (actionState == CloneActionState::GunTwirl) StopCloneGunTwirl(clone, equippedWeapon, true);
+					actionState = CloneActionState::Mourning;
 					if (now < g_MourningEmoteUntil) { ScriptMgr::Yield(kBrainTick); continue; }
 					if (now < g_MourningFleeUntil)
 					{
 						if (!g_MourningFleeIssued) { TASK::CLEAR_PED_TASKS(clone, true, false); if (g_MourningDeadClone && ENTITY::DOES_ENTITY_EXIST(g_MourningDeadClone)) TASK::TASK_SMART_FLEE_PED(clone, g_MourningDeadClone, 55.0f, 7000, 0, 3.0f, 0); else TASK::TASK_WANDER_STANDARD(clone, 1.0f, 0); g_MourningFleeIssued = true; }
 						ScriptMgr::Yield(kBrainTick); continue;
 					}
-					ResetMourning(); currentTarget = 0; issuedTarget = 0; followIssued = false; nextDecision = now;
+					ResetMourning(); currentTarget = 0; issuedTarget = 0; followIssued = false; actionState = CloneActionState::Normal; nextDecision = now; idleSince = now;
 				}
 
-				CloneMode effectiveMode = options.Mode;
+				if (actionState == CloneActionState::GunTwirl)
+				{
+					int urgentTarget{};
+					if (now >= nextDecision)
+					{
+						urgentTarget = effectiveMode == CloneMode::AttackOwner ? owner : (effectiveMode == CloneMode::Bodyguard ? FindBodyguardThreat(clone, owner, sightRange) : FindNearestNpcTarget(clone, owner, sightRange));
+						nextDecision = now + kCombatDecisionInterval;
+					}
+					const float ownerDistanceSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(owner, true, false));
+					const bool mustFollow = effectiveMode == CloneMode::Bodyguard && ownerDistanceSq >= kFollowResumeRadius * kFollowResumeRadius;
+					const bool mustFight = urgentTarget || PED::IS_PED_IN_COMBAT(clone, 0) || effectiveMode == CloneMode::AttackOwner;
+					if (mustFight || mustFollow)
+					{
+						StopCloneGunTwirl(clone, equippedWeapon, true);
+						actionState = mustFight ? CloneActionState::Combat : CloneActionState::Following;
+						if (urgentTarget) currentTarget = urgentTarget;
+						issuedTarget = 0; followIssued = false; idleSince = now; smokeUsedThisIdle = false; nextDecision = now; nextFollow = now; nextGunTwirlAllowed = now + kGunTwirlIdleDelay;
+					}
+					else if (now >= gunTwirlEndsAt)
+					{
+						StopCloneGunTwirl(clone, equippedWeapon, true);
+						actionState = CloneActionState::Normal; followIssued = false; idleSince = now; smokeUsedThisIdle = false; nextFollow = now; nextDecision = now; nextWeaponAudit = now + kWeaponAuditInterval;
+						nextGunTwirlAllowed = now + std::chrono::milliseconds(RandomInt(12000, 20000));
+						ScriptMgr::Yield(kBrainTick); continue;
+					}
+					else { ScriptMgr::Yield(kBrainTick); continue; }
+				}
+
+				if (now >= nextWeaponAudit && actionState != CloneActionState::Smoking && actionState != CloneActionState::SocialEmote)
+				{
+					EnsureCloneWeaponEquipped(clone, equippedWeapon);
+					nextWeaponAudit = now + kWeaponAuditInterval;
+				}
+
 				if (options.Mode == CloneMode::Bodyguard && g_BodyguardsBetrayed)
 				{
-					effectiveMode = CloneMode::AttackOwner; PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false);
+					PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false);
 					if (!insultedOnBetrayal && !PED::IS_PED_IN_COMBAT(clone, owner))
 					{
+						actionState = CloneActionState::SocialEmote;
 						PlayRareSocialReaction(clone, owner, options.EmoteFlourish, true);
 						EnsureCloneWeaponEquipped(clone, equippedWeapon);
-						insultedOnBetrayal = true; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+						actionState = CloneActionState::Normal; insultedOnBetrayal = true; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval; idleSince = Clock::now(); nextGunTwirlAllowed = idleSince + kGunTwirlIdleDelay;
 					}
 				}
 
@@ -649,7 +731,7 @@ namespace YimMenu::Submenus
 					}
 					if (currentTarget && ENTITY::DOES_ENTITY_EXIST(currentTarget) && !ENTITY::IS_ENTITY_DEAD(currentTarget))
 					{
-						smoking = false; frenzyRoaming = false; followIssued = false; idleSince = now;
+						actionState = CloneActionState::Combat; smokeUsedThisIdle = false; frenzyRoaming = false; followIssued = false; idleSince = now;
 						if (issuedTarget != currentTarget || !PED::IS_PED_IN_COMBAT(clone, currentTarget)) { TaskVanillaCombat(clone, currentTarget, owner, equippedWeapon); issuedTarget = currentTarget; }
 					}
 					else if (effectiveMode == CloneMode::Bodyguard)
@@ -657,50 +739,62 @@ namespace YimMenu::Submenus
 						issuedTarget = 0;
 						MaintainBodyguardFollow(clone, owner, now, nextHorse, nextFollow, followIssued);
 						const float dSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(owner, true, false));
-						if (dSq <= 9.0f * 9.0f && ENTITY::GET_ENTITY_SPEED(clone) < 0.25f && ENTITY::GET_ENTITY_SPEED(owner) < 0.25f)
+						actionState = (followIssued || dSq > kFollowStopRadius * kFollowStopRadius) ? CloneActionState::Following : CloneActionState::Normal;
+						if (dSq <= 9.0f * 9.0f && ENTITY::GET_ENTITY_SPEED(clone) < 0.25f && ENTITY::GET_ENTITY_SPEED(owner) < 0.25f && actionState == CloneActionState::Normal)
 						{
 							const Vector3 pos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
-							if (now - idleSince >= kIdleSmokeDelay && !smoking && !PATHFIND::IS_POINT_ON_ROAD(pos.x, pos.y, pos.z, 0))
+							if (options.IdleGunTwirl && IsSidearm(selectedWeaponName) && now - idleSince >= kGunTwirlIdleDelay && now >= nextGunTwirlAllowed && !TASK::IS_EMOTE_TASK_RUNNING(clone, 0))
 							{
+								if (StartCloneGunTwirl(clone, equippedWeapon, selectedWeaponName, now, gunTwirlEndsAt))
+								{
+									actionState = CloneActionState::GunTwirl; followIssued = false; nextFollow = now; nextWeaponAudit = gunTwirlEndsAt + kWeaponAuditInterval;
+								}
+							}
+							else if (now - idleSince >= kIdleSmokeDelay && !smokeUsedThisIdle && !PATHFIND::IS_POINT_ON_ROAD(pos.x, pos.y, pos.z, 0))
+							{
+								actionState = CloneActionState::Smoking;
 								PlayTimedEmote(clone, owner, kIdleSmokeEmote, false, false);
 								EnsureCloneWeaponEquipped(clone, equippedWeapon);
-								smoking = true; followIssued = false; nextFollow = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+								actionState = CloneActionState::Normal; smokeUsedThisIdle = true; followIssued = false; idleSince = Clock::now(); nextFollow = idleSince; nextWeaponAudit = idleSince + kWeaponAuditInterval; nextGunTwirlAllowed = idleSince + kGunTwirlIdleDelay;
 							}
 						}
-						else { idleSince = now; smoking = false; }
+						else { idleSince = now; smokeUsedThisIdle = false; }
 					}
 					else if (effectiveMode == CloneMode::FrenzyNpcs)
 					{
-						issuedTarget = 0; smoking = false; followIssued = false; PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false); PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.35f);
+						actionState = CloneActionState::Normal; issuedTarget = 0; smokeUsedThisIdle = false; followIssued = false; PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false); PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.35f);
 						if (!frenzyRoaming || now >= nextRoam) { TASK::CLEAR_PED_TASKS(clone, true, false); TASK::TASK_WANDER_STANDARD(clone, 1.0f, 0); frenzyRoaming = true; nextRoam = now + kFrenzyRoamRefresh; }
 					}
-					else { issuedTarget = 0; currentTarget = owner; followIssued = false; }
+					else { actionState = CloneActionState::Combat; issuedTarget = 0; currentTarget = owner; followIssued = false; }
 					nextDecision = Clock::now() + kCombatDecisionInterval;
 				}
 
-				if (Clock::now() >= nextSocial && !currentTarget && !PED::IS_PED_IN_COMBAT(clone, 0))
+				if (actionState != CloneActionState::GunTwirl && Clock::now() >= nextSocial && !currentTarget && !PED::IS_PED_IN_COMBAT(clone, 0))
 				{
 					const int interactingPlayer = FindInteractingEmotePlayer(clone);
 					if (interactingPlayer)
 					{
+						actionState = CloneActionState::SocialEmote;
 						PlayRareSocialReaction(clone, interactingPlayer, options.EmoteFlourish, false);
 						EnsureCloneWeaponEquipped(clone, equippedWeapon);
-						followIssued = false; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+						actionState = CloneActionState::Normal; followIssued = false; idleSince = Clock::now(); smokeUsedThisIdle = false; nextDecision = idleSince; nextWeaponAudit = idleSince + kWeaponAuditInterval; nextGunTwirlAllowed = idleSince + kGunTwirlIdleDelay;
 					}
 					nextSocial = Clock::now() + kSocialDecisionInterval;
 				}
-				if (Clock::now() >= nextIdleEmote && !currentTarget && !smoking && !PED::IS_PED_IN_COMBAT(clone, 0))
+				if (actionState == CloneActionState::Normal && Clock::now() >= nextIdleEmote && !currentTarget && !PED::IS_PED_IN_COMBAT(clone, 0))
 				{
 					if (RandomInt(1, 100) <= 4 && IsWithinRange(clone, owner, kSocialRadius))
 					{
+						actionState = CloneActionState::SocialEmote;
 						PlayRareSocialReaction(clone, owner, options.EmoteFlourish, false);
 						EnsureCloneWeaponEquipped(clone, equippedWeapon);
-						followIssued = false; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+						actionState = CloneActionState::Normal; followIssued = false; idleSince = Clock::now(); smokeUsedThisIdle = false; nextDecision = idleSince; nextWeaponAudit = idleSince + kWeaponAuditInterval; nextGunTwirlAllowed = idleSince + kGunTwirlIdleDelay;
 					}
 					nextIdleEmote = Clock::now() + 24s;
 				}
 				ScriptMgr::Yield(kBrainTick);
 			}
+			if (actionState == CloneActionState::GunTwirl && clone && ENTITY::DOES_ENTITY_EXIST(clone)) StopCloneGunTwirl(clone, equippedWeapon, true);
 		}
 
 		void SpawnManualCloneAt(CloneOptions options, const Vector3& spawn, float heading)
@@ -791,6 +885,7 @@ namespace YimMenu::Submenus
 			int m_Health{800};
 			float m_SeeingRange{220.0f};
 			int m_WalkStyleIndex{};
+			bool m_IdleGunTwirl{true};
 
 			CloneOptions GetOptions() const
 			{
@@ -803,6 +898,7 @@ namespace YimMenu::Submenus
 				out.Health = m_Health;
 				out.SeeingRange = m_SeeingRange;
 				out.WalkStyleIndex = m_WalkStyleIndex;
+				out.IdleGunTwirl = m_IdleGunTwirl;
 				return out;
 			}
 			std::string SourcePreview() const
@@ -854,8 +950,9 @@ namespace YimMenu::Submenus
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "COMPORTAMENTO" : "BEHAVIOR"); const char* modePreview = Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); ImGui::SetNextItemWidth(-1.0f);
 				if (ImGui::BeginCombo("##CloneBehavior", modePreview)) { for (int i = 0; i < 3; ++i) { const auto mode = static_cast<CloneMode>(i); const char* label = Localization::IsPortuguese() ? ModeLabelPt(mode) : ModeLabelEn(mode); if (ImGui::Selectable(label, m_Mode == mode)) m_Mode = mode; } ImGui::EndCombo(); }
 				ImGui::Checkbox(Localization::IsPortuguese() ? "Floreio de emote (10 s)" : "Emote flourish (10 s)", &m_EmoteFlourish);
+				ImGui::Checkbox(Localization::IsPortuguese() ? "Girar pistola/revólver quando ocioso (~6 s)" : "Idle pistol/revolver gun tricks (~6 s)", &m_IdleGunTwirl);
 				ImGui::TextWrapped("%s", Localization::IsPortuguese() ? "Guarda-costas entra no grupo do jogador e recebe seguimento persistente; combate/cobertura ficam com a IA padrão do RDR2. Frenético abandona cadáveres, procura outro NPC e continua vagando entre buscas." : "Bodyguards join the player group and keep persistent following; combat/cover use stock RDR2 AI. Frenzy abandons corpses, searches another NPC and keeps roaming between scans.");
-				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Emotes são full-body: armas são guardadas antes da animação e voltam depois. O Tenebris também reconfirma periodicamente a arma escolhida para impedir que o clone fique desarmado por engano." : "Emotes are full-body: weapons are stowed before the animation and return afterwards. Tenebris also periodically reasserts the selected weapon so the clone does not remain accidentally unarmed.");
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Gun tricks usam o KIT_EMOTE_TWIRL_GUN do RDR2 e só iniciam com a pistola/revólver escolhida realmente equipada. Combate, follow, incapacitação e mourning interrompem o giro; fumar e outros emotes nunca iniciam ao mesmo tempo." : "Gun tricks use RDR2's KIT_EMOTE_TWIRL_GUN and only start when the selected pistol/revolver is actually equipped. Combat, follow, incapacitation and mourning interrupt the trick; smoking and other emotes never start at the same time.");
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "REDE" : "NETWORK"); ImGui::Checkbox(Localization::IsPortuguese() ? "Ativar Network (visível para outros)" : "Enable Network (visible to others)", &m_Networked);
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Não: clone só no seu cliente. Sim: entidade de rede, outros podem receber/ver; pode haver mais desync/ownership." : "Off: clone exists only on your client. On: network entity others may receive/see; more desync/ownership is possible.");
 
@@ -877,9 +974,9 @@ namespace YimMenu::Submenus
 			}
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clone configurável: vida, arma, visão, estilo de andar, IA, multi-spawn, loot e emotes." : "Configurable clone: health, weapon, sight, walk style, AI, multi-spawn, loot and emotes."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clone configurável: vida, arma, visão, estilo de andar, IA, gun tricks, multi-spawn, loot e emotes." : "Configurable clone: health, weapon, sight, walk style, AI, gun tricks, multi-spawn, loot and emotes."; }
 			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 1160.0f; }
+			float GetPreferredEditorHeight() const override { return 1190.0f; }
 		};
 	}
 	std::shared_ptr<UIItem> CreateManualCloneItem() { return std::make_shared<ManualCloneItem>(); }
