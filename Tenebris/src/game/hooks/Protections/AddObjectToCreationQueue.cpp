@@ -1,6 +1,7 @@
 #include "core/hooking/DetourHook.hpp"
 #include "game/backend/Protections.hpp"
 #include "game/hooks/Hooks.hpp"
+#include "game/hooks/Protections/SyncBoundsGuard.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "game/rdr/Nodes.hpp"
 #include "util/Joaat.hpp"
@@ -13,8 +14,13 @@ namespace YimMenu::Hooks
 	{
 		YimMenu::Protections::SetSyncingPlayer(src);
 
-		if (ShouldBlockSync(Pointers.GetSyncTreeForType(nullptr, (uint16_t)type), type, nullptr))
+		auto* tree = Pointers.GetSyncTreeForType(nullptr, (uint16_t)type);
+		const bool blocked = !tree || HasUnsafeSyncBounds(tree) || ShouldBlockSync(tree, type, nullptr);
+		if (blocked)
+		{
+			YimMenu::Protections::SetSyncingPlayer(nullptr);
 			return 0;
+		}
 
 		YimMenu::Protections::SetSyncingPlayer(nullptr);
 
