@@ -83,3 +83,5 @@ jobs:
           name: Tenebris-DLL
           path: Tenebris/build/**/Tenebris.dll
           if-no-files-found: error
+
+# validation trigger: clone perception build
