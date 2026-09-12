@@ -281,7 +281,11 @@ namespace YimMenu::Submenus
 			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone)) return;
 			if (sourcePlayerId < 0) sourcePlayerId = PLAYER::PLAYER_ID();
 			const char* playerName = PLAYER::GET_PLAYER_NAME(sourcePlayerId);
-			if (playerName && *playerName) PED::_SET_PED_PROMPT_NAME(clone, MISC::VAR_STRING(10, "LITERAL_STRING", playerName));
+			if (playerName && *playerName)
+			{
+				const char* literalString = "LITERAL_STRING";
+				PED::_SET_PED_PROMPT_NAME(clone, MISC::VAR_STRING(10, literalString, playerName));
+			}
 		}
 		void ConfigureBleedout(int clone)
 		{
