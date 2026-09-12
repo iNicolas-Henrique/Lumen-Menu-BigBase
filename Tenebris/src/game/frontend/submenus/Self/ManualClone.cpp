@@ -54,6 +54,7 @@ namespace YimMenu::Submenus
 			CloneMode Mode{CloneMode::Bodyguard};
 			bool Networked{};
 			Clock::time_point DeadAt{};
+			Hash Weapon{};
 		};
 
 		constexpr int kCloneHealth = 800;
@@ -159,6 +160,7 @@ namespace YimMenu::Submenus
 		Clock::time_point g_MourningEmoteUntil{};
 		Clock::time_point g_MourningFleeUntil{};
 		bool g_MourningFleeIssued{};
+		int g_RemoteControlledClone{};
 
 		std::mt19937& Rng() { static std::mt19937 rng{static_cast<std::mt19937::result_type>(Clock::now().time_since_epoch().count())}; return rng; }
 		int RandomInt(int min, int max) { return std::uniform_int_distribution<int>(min, max)(Rng()); }
@@ -505,7 +507,7 @@ namespace YimMenu::Submenus
 			TASK::CLEAR_PED_TASKS(clone, true, false); FaceEntity(clone, faceTarget); PlayFullBodyEmote(clone, emote);
 			const auto endAt = Clock::now() + (flourish ? kFlourishTime : kNormalEmoteTime);
 			auto nextFace = Clock::now(), nextReplay = Clock::now() + 3200ms;
-			while (Clock::now() < endAt && ENTITY::DOES_ENTITY_EXIST(clone) && !ENTITY::IS_ENTITY_DEAD(clone) && !PED::IS_PED_INCAPACITATED(clone))
+			while (Clock::now() < endAt && ENTITY::DOES_ENTITY_EXIST(clone) && !ENTITY::IS_ENTITY_DEAD(clone) && !PED::IS_PED_INCAPACITATED(clone) && g_RemoteControlledClone != clone)
 			{
 				const auto now = Clock::now();
 				if (faceTarget && ENTITY::DOES_ENTITY_EXIST(faceTarget) && now >= nextFace) { FaceEntity(clone, faceTarget); nextFace = now + 500ms; }
@@ -634,6 +636,17 @@ namespace YimMenu::Submenus
 			{
 				if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner)) break;
 				const auto now = Clock::now();
+
+				if (g_RemoteControlledClone == clone)
+				{
+					currentTarget = 0;
+					issuedTarget = 0;
+					followIssued = false;
+					actionState = CloneActionState::Normal;
+					ScriptMgr::Yield(kBrainTick);
+					continue;
+				}
+
 				const int health = ENTITY::GET_ENTITY_HEALTH(clone);
 				const bool damagedByOwner = ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(clone, owner, true, true);
 				if (options.Mode == CloneMode::Bodyguard && !g_BodyguardsBetrayed && health < lastHealth && damagedByOwner) g_BodyguardsBetrayed = true;
@@ -817,7 +830,9 @@ namespace YimMenu::Submenus
 			ScriptMgr::Yield();
 			EnsureCloneWeaponEquipped(clone, weapon);
 			ConfigureCloneCombat(clone, options.Mode, kCloneWeapons[options.WeaponIndex].HashName, options.SeeingRange); ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
-			g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode, options.Networked, {}}); g_NextPedCacheRefresh = {};
+			g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode, options.Networked, {}});
+			g_ManagedClones.back().Weapon = weapon;
+			g_NextPedCacheRefresh = {};
 			++g_TotalSpawned; if (g_TotalSpawned % 5 == 0) PruneManagedClones(true);
 			FiberPool::Push([clone, owner, options, weapon] { RunCloneBrain(clone, owner, options, weapon); });
 			const char* sourceName = PLAYER::GET_PLAYER_NAME(options.SourcePlayerId);
@@ -842,6 +857,9 @@ namespace YimMenu::Submenus
 			SHAPETEST::GET_SHAPE_TEST_RESULT(ray, &hit, &endCoords, &normal, &hitEntity);
 			if (!hit) return false; out = endCoords; return true;
 		}
+
+#include "ManualCloneRemote.inc"
+
 		void RunCloneSpawnFreecam(CloneOptions options)
 		{
 			auto self = Self::GetPed(); if (!self.IsValid()) return;
@@ -956,6 +974,25 @@ namespace YimMenu::Submenus
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "REDE" : "NETWORK"); ImGui::Checkbox(Localization::IsPortuguese() ? "Ativar Network (visível para outros)" : "Enable Network (visible to others)", &m_Networked);
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Não: clone só no seu cliente. Sim: entidade de rede, outros podem receber/ver; pode haver mais desync/ownership." : "Off: clone exists only on your client. On: network entity others may receive/see; more desync/ownership is possible.");
 
+				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "CONTROLE REMOTO" : "REMOTE CONTROL");
+				if (g_RemoteControlledClone)
+				{
+					ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Controle remoto ativo. Use BACK dentro da câmera do clone para sair." : "Remote control active. Press BACK in clone camera to exit.");
+				}
+				else if (ImGui::Button(Localization::IsPortuguese() ? "CONTROLAR ÚLTIMO CLONE" : "CONTROL LAST CLONE", ImVec2(-1.0f, 34.0f)))
+				{
+					if (auto* managed = GetLatestRemoteControllableClone())
+					{
+						const int clone = managed->Ped;
+						FiberPool::Push([clone] { RunCloneRemoteControl(clone); });
+					}
+					else
+					{
+						Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Crie primeiro um clone manual ou pela freecam." : "Create a manual/freecam clone first.", NotificationType::Warning, 2400);
+					}
+				}
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "WASD move; SHIFT corre; ESPAÇO pula; botão direito mira; esquerdo atira. Batalha + Expedição não entra neste modo." : "WASD moves; SHIFT sprints; SPACE jumps; right mouse aims; left mouse fires. Session Brawl clones are excluded.");
+
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "EVENTO DA SESSÃO" : "SESSION EVENT");
 				if (ImGui::Button(Localization::IsPortuguese() ? "CLONAR TODOS: BATALHA + EXPEDIÇÃO" : "CLONE ALL: BRAWL + EXPEDITION", ImVec2(-1.0f, 36.0f)))
 				{
@@ -974,9 +1011,9 @@ namespace YimMenu::Submenus
 			}
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clone configurável: vida, arma, visão, estilo de andar, IA, gun tricks, multi-spawn, loot e emotes." : "Configurable clone: health, weapon, sight, walk style, AI, gun tricks, multi-spawn, loot and emotes."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clone configurável: vida, arma, visão, estilo de andar, IA, gun tricks, controle remoto, multi-spawn, loot e emotes." : "Configurable clone: health, weapon, sight, walk style, AI, gun tricks, remote control, multi-spawn, loot and emotes."; }
 			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 1190.0f; }
+			float GetPreferredEditorHeight() const override { return 1320.0f; }
 		};
 	}
 	std::shared_ptr<UIItem> CreateManualCloneItem() { return std::make_shared<ManualCloneItem>(); }
