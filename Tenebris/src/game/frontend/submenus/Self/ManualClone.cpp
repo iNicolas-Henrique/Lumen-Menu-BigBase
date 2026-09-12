@@ -29,7 +29,92 @@ namespace YimMenu::Submenus
             Clock::time_point LastDismountAttempt{};
         };
 
+        struct CloneRadarBlipState
+        {
+            int Clone{};
+            int Blip{};
+            CloneMode Mode{CloneMode::Bodyguard};
+        };
+
         std::array<BodyguardMountMirrorState, kMaxActiveClones> g_BodyguardMountMirror{};
+        std::array<CloneRadarBlipState, kMaxActiveClones> g_CloneRadarBlips{};
+
+        void RemoveCloneRadarBlip(CloneRadarBlipState& state)
+        {
+            if (state.Blip)
+            {
+                int blip = state.Blip;
+                MAP::REMOVE_BLIP(&blip);
+            }
+            state = {};
+        }
+
+        int CreateCloneRadarBlip(int clone, CloneMode mode)
+        {
+            if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
+                return 0;
+
+            const bool bodyguard = mode == CloneMode::Bodyguard;
+            const Hash style = bodyguard ? "BLIP_STYLE_COMPANION"_J : "BLIP_STYLE_CREATOR_DEFAULT"_J;
+            const int blip = MAP::BLIP_ADD_FOR_ENTITY(style, clone);
+            if (!blip)
+                return 0;
+
+            // MP_COLOR_10 is the game's red network-player color. Bodyguards use
+            // light blue so friend/enemy affiliation is readable at a glance.
+            MAP::BLIP_ADD_MODIFIER(blip, bodyguard ? "BLIP_MODIFIER_MP_COLOR_1"_J : "BLIP_MODIFIER_MP_COLOR_10"_J);
+            MAP::SET_BLIP_SPRITE(blip, "BLIP_AMBIENT_PED_SMALL"_J, true);
+            MAP::_SET_BLIP_NAME(blip, bodyguard ? "Guarda-costas Tenebris" : "Clone hostil Tenebris");
+            return blip;
+        }
+
+        void SyncCloneRadarBlips()
+        {
+            // Remove stale/dead/reclassified entries first. Attached blips follow
+            // their entity automatically, so there is no per-frame position work.
+            for (auto& state : g_CloneRadarBlips)
+            {
+                if (!state.Clone)
+                    continue;
+
+                auto* managed = FindManagedClone(state.Clone);
+                if (!managed || !managed->Ped || !ENTITY::DOES_ENTITY_EXIST(managed->Ped) ||
+                    ENTITY::IS_ENTITY_DEAD(managed->Ped) || managed->Mode != state.Mode)
+                {
+                    RemoveCloneRadarBlip(state);
+                }
+            }
+
+            for (const auto& managed : g_ManagedClones)
+            {
+                if (!managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
+                    continue;
+
+                bool alreadyTracked = false;
+                for (const auto& state : g_CloneRadarBlips)
+                {
+                    if (state.Clone == managed.Ped)
+                    {
+                        alreadyTracked = true;
+                        break;
+                    }
+                }
+                if (alreadyTracked)
+                    continue;
+
+                for (auto& state : g_CloneRadarBlips)
+                {
+                    if (state.Clone)
+                        continue;
+                    state.Clone = managed.Ped;
+                    state.Mode = managed.Mode;
+                    state.Blip = CreateCloneRadarBlip(managed.Ped, managed.Mode);
+                    if (!state.Blip)
+                        state = {};
+                    break;
+                }
+            }
+        }
 
         BodyguardMountMirrorState& GetBodyguardMountMirrorState(int clone)
         {
@@ -159,7 +244,10 @@ namespace YimMenu::Submenus
                 const int owner = self.GetHandle();
                 const bool ownerMounted = GetPlayerMountHandle() != 0;
                 const auto now = Clock::now();
+                const bool hasClones = !g_ManagedClones.empty();
                 bool hasBodyguards = false;
+
+                SyncCloneRadarBlips();
 
                 for (const auto& managed : g_ManagedClones)
                 {
@@ -169,7 +257,7 @@ namespace YimMenu::Submenus
                     SyncBodyguardMountState(managed.Ped, owner, ownerMounted, now);
                 }
 
-                ScriptMgr::Yield(hasBodyguards ? 250ms : 700ms);
+                ScriptMgr::Yield(hasBodyguards ? 250ms : (hasClones ? 350ms : 700ms));
             }
         }
 
