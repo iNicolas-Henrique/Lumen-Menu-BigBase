@@ -19,6 +19,7 @@ constexpr int kHostileIncapacitationHealth = 20;
 constexpr int kCloneBleedoutMilliseconds = 15000;
 constexpr float kCloneBleedoutSeconds = 15.0f;
 constexpr int kRareLootAmmoAmount = 100;
+constexpr int kDisableAmbientPromptsFlag = 129;
 
 std::array<CloneLifeLootState, kMaxActiveClones> g_CloneLifeLoot{};
 
@@ -91,6 +92,7 @@ void ApplyCloneLifeProfile(int clone, CloneMode mode)
     PED::_SET_PED_INCAPACITATION_TOTAL_BLEED_OUT_DURATION(clone, kCloneBleedoutSeconds);
     PED::_SET_PED_WRITHING_DURATION(clone, 10.0f, kCloneBleedoutSeconds, 0);
     PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
+    PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
 
     // Keep both clone classes lootable, but do not create a second inventory or
     // per-frame reward system. The actual rare package is granted once when the
@@ -153,6 +155,10 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
 
         if (ENTITY::IS_ENTITY_DEAD(clone))
         {
+            // Re-enable normal corpse prompts after hostile incapacitation hid its
+            // interaction prompts; looting must remain available after death.
+            PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
+
             if (!state.LootGranted && owner && ENTITY::DOES_ENTITY_EXIST(owner) && ENTITY::_FIND_ENTITY_LOOTING_PED(clone) == owner)
             {
                 state.LootGranted = true;
@@ -176,6 +182,11 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
 
             PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
 
+            // Bodyguards retain the game's allied interaction prompts. Hostile
+            // clones suppress ambient interaction prompts while downed so the
+            // local player is not offered a Tenebris/ambient revive interaction.
+            PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, managed.Mode != CloneMode::Bodyguard);
+
             // Native bleedout is configured to 15 seconds, and this deadline is a
             // deterministic backstop so a stuck writhe task cannot make a clone
             // remain incapacitated forever.
@@ -194,6 +205,7 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             // again at the 50 HP threshold.
             state.WasIncapacitated = false;
             state.IncapacitatedAt = {};
+            PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
             const int maxHealth = ENTITY::GET_ENTITY_MAX_HEALTH(clone, false);
             const int safeHealth = std::min(maxHealth, std::max(150, kBodyguardIncapacitationHealth + 100));
             if (ENTITY::GET_ENTITY_HEALTH(clone) < safeHealth)
