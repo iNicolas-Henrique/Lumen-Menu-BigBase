@@ -29,6 +29,13 @@ namespace YimMenu
 		{
 			file >> m_Json;
 			file.close();
+
+			if (!m_Json.is_object())
+			{
+				LOG(WARNING) << "Settings root is not an object, resetting settings...";
+				Reset();
+				return;
+			}
 		}
 		catch (std::exception&)
 		{
@@ -46,26 +53,42 @@ namespace YimMenu
 
 	void Settings::TickImpl()
 	{
-		std::lock_guard lock(m_Mutex);
-		while (!m_LateLoaders.empty())
+		std::string pendingWrite;
 		{
-			if (auto component = std::move(m_LateLoaders.front()))
+			std::lock_guard lock(m_Mutex);
+			while (!m_LateLoaders.empty())
 			{
-				LoadComponent(component);
+				if (auto component = std::move(m_LateLoaders.front()))
+				{
+					LoadComponentImpl(component);
+				}
+
+				m_LateLoaders.pop();
 			}
 
-			m_LateLoaders.pop();
+			if (m_InitialLoadDone && ShouldSave())
+			{
+				for (auto& serializer : m_StateSerializers)
+					if (serializer->IsStateDirty())
+						SaveComponentImpl(serializer);
+
+				// Build a stable snapshot while protected, then perform disk I/O after
+				// releasing the mutex so settings users are never blocked by the drive.
+				pendingWrite = m_Json.dump(4);
+			}
 		}
 
-		if (m_InitialLoadDone && ShouldSave())
+		if (!pendingWrite.empty())
 		{
-			for (auto& serializer : m_StateSerializers)
-				if (serializer->IsStateDirty())
-					SaveComponentImpl(serializer);
-
 			std::ofstream file(m_SettingsFile, std::ios::out | std::ios::trunc);
-			file << m_Json.dump(4);
-			file.close();
+			if (file.is_open())
+			{
+				file << pendingWrite;
+			}
+			else
+			{
+				LOG(WARNING) << "Unable to save settings file";
+			}
 		}
 	}
 
@@ -95,10 +118,14 @@ namespace YimMenu
 
 	void Settings::Reset()
 	{
+		m_Json = nlohmann::json::object();
+
 		std::ofstream file(m_SettingsFile, std::ios::out | std::ios::trunc);
-		file << "{}" << std::endl;
-		file.close();
-		m_Json = "{}";
+		if (file.is_open())
+			file << m_Json.dump(4) << std::endl;
+		else
+			LOG(WARNING) << "Unable to reset settings file";
+
 		m_InitialLoadDone = true;
 	}
 
