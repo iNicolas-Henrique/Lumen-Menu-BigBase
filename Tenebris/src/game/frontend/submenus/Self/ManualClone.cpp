@@ -112,12 +112,13 @@ namespace YimMenu::Submenus
                 }
                 else
                 {
-                    if (mirror.OwnerWasMounted && IsMountPlanActive(clone) && !inCombat)
+                    if (!mirror.SuppressingLegacyDistanceMount && IsMountPlanActive(clone) && !inCombat)
                     {
-                        // Owner dismounted while this guard was still running toward
-                        // a horse. Cancel that one stale mount task once; follow AI
-                        // will issue its normal on-foot follow again.
+                        // A mount task may have been issued between mirror ticks.
+                        // Cancel it once whenever the owner is on foot, then block
+                        // only the legacy distance-based remount path below.
                         TASK::CLEAR_PED_TASKS(clone, true, false);
+                        support.MountTaskIssuedAt = {};
                     }
 
                     const float dSq = DistanceSquared(
