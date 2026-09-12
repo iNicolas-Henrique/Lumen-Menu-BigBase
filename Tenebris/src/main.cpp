@@ -75,7 +75,10 @@ namespace YimMenu
 
 		while (g_Running)
 		{
-			Settings::Tick(); // TODO: move this somewhere else
+			Settings::Tick();
+			// Settings does not need frame-rate polling. Yielding here prevents the
+			// main thread from busy-spinning at 100% CPU while preserving fast saves.
+			Sleep(25);
 		}
 
 		LOG(INFO) << "Descarregando";
