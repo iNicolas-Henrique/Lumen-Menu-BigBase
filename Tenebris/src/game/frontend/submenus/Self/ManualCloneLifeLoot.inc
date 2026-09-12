@@ -9,6 +9,7 @@ struct CloneLifeLootState
     bool ProfileApplied{};
     bool WasIncapacitated{};
     bool LootGranted{};
+    bool CorpsePromptsRestored{};
     int AmmoVariant{};
     int TonicCount{10};
     Clock::time_point IncapacitatedAt{};
@@ -155,9 +156,13 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
 
         if (ENTITY::IS_ENTITY_DEAD(clone))
         {
-            // Re-enable normal corpse prompts after hostile incapacitation hid its
-            // interaction prompts; looting must remain available after death.
-            PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
+            // Re-enable normal corpse prompts once. Loot checks remain lightweight
+            // and stop entirely after this clone has paid its rare package.
+            if (!state.CorpsePromptsRestored)
+            {
+                PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
+                state.CorpsePromptsRestored = true;
+            }
 
             if (!state.LootGranted && owner && ENTITY::DOES_ENTITY_EXIST(owner) && ENTITY::_FIND_ENTITY_LOOTING_PED(clone) == owner)
             {
@@ -178,14 +183,14 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             {
                 state.WasIncapacitated = true;
                 state.IncapacitatedAt = now;
+                // Bodyguards retain the game's allied interaction prompts. Hostile
+                // clones hide ambient prompts while downed, so no revive interaction
+                // is offered for them. This config flag persists; one native call is
+                // enough until the state changes.
+                PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, managed.Mode != CloneMode::Bodyguard);
             }
 
             PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
-
-            // Bodyguards retain the game's allied interaction prompts. Hostile
-            // clones suppress ambient interaction prompts while downed so the
-            // local player is not offered a Tenebris/ambient revive interaction.
-            PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, managed.Mode != CloneMode::Bodyguard);
 
             // Native bleedout is configured to 15 seconds, and this deadline is a
             // deterministic backstop so a stuck writhe task cannot make a clone
