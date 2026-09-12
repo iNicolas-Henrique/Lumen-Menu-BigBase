@@ -2,8 +2,8 @@
 // Session brawl/expedition stays removed. The code below reuses the existing
 // clone brain and shared PED cache instead of adding a second per-frame system.
 
-constexpr float kAggressiveHorizontalCosSq = 0.25f; // 120-degree horizontal FOV.
-constexpr float kAggressiveVerticalTanSq = 0.7040882f; // ~80-degree vertical FOV.
+constexpr float kAggressiveHorizontalCosSq = 0.25f;
+constexpr float kAggressiveVerticalTanSq = 0.7040882f;
 constexpr std::size_t kAggressiveLosCandidateCount = 5;
 constexpr auto kAggressiveTargetMemory = 550ms;
 constexpr auto kAggressiveMinScanInterval = 520ms;
@@ -18,8 +18,7 @@ constexpr auto kGuardMountTaskTimeout = 8s;
 constexpr auto kGuardThreatCacheInterval = 450ms;
 constexpr auto kWeaponMismatchGrace = 900ms;
 constexpr auto kWeaponCombatRetry = 1100ms;
-constexpr auto kWeaponIdleRetry = 5500ms;
-constexpr auto kWeaponMountedRetry = 8s;
+constexpr auto kWeaponMountedCombatRetry = 2500ms;
 
 struct AggressivePerceptionState
 {
@@ -60,6 +59,16 @@ bool IsAnyLiveHumanPedTarget(int candidate, int clone)
 	return PED::IS_PED_HUMAN(candidate);
 }
 
+bool IsCloneMeleeWeapon(Hash weapon)
+{
+	for (const auto& entry : kCloneWeapons)
+	{
+		if (Joaat(entry.HashName) == weapon)
+			return std::string_view(entry.HashName).find("WEAPON_MELEE_") == 0;
+	}
+	return false;
+}
+
 void DeleteSupportHorse(CloneSupportState& state)
 {
 	if (state.HorseOwned && state.Horse && ENTITY::DOES_ENTITY_EXIST(state.Horse))
@@ -75,10 +84,8 @@ void DeleteSupportHorse(CloneSupportState& state)
 CloneSupportState& GetCloneSupportState(int clone)
 {
 	for (auto& state : g_CloneSupport)
-	{
 		if (state.Clone == clone)
 			return state;
-	}
 
 	for (std::size_t i = 0; i < g_CloneSupport.size(); ++i)
 	{
@@ -116,10 +123,8 @@ bool IsHorseClaimedByOtherClone(int horse, int clone)
 	if (!horse)
 		return false;
 	for (const auto& state : g_CloneSupport)
-	{
 		if (state.Clone && state.Clone != clone && state.Horse == horse)
 			return true;
-	}
 	return false;
 }
 
@@ -137,13 +142,36 @@ int GetBodyguardFormationIndex(int clone)
 	return index;
 }
 
+void CatchUpBodyguardToOwner(int clone, int owner)
+{
+	if (!clone || !owner || !ENTITY::DOES_ENTITY_EXIST(clone) || !ENTITY::DOES_ENTITY_EXIST(owner) || PED::IS_PED_IN_COMBAT(clone, 0))
+		return;
+	const Vector3 clonePos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
+	const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
+	if (DistanceSquared(clonePos, ownerPos) <= kGuardCatchUpWarpDistance * kGuardCatchUpWarpDistance)
+		return;
+
+	const int formation = GetBodyguardFormationIndex(clone);
+	const float side = static_cast<float>((formation % 3) - 1) * 2.4f;
+	const float back = -7.0f - static_cast<float>(formation / 3) * 2.0f;
+	const Vector3 catchUp = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(owner, side, back, 0.35f);
+	if (PED::IS_PED_ON_MOUNT(clone))
+	{
+		const int mount = PED::GET_MOUNT(clone);
+		if (mount && ENTITY::DOES_ENTITY_EXIST(mount))
+			ENTITY::SET_ENTITY_COORDS_NO_OFFSET(mount, catchUp.x, catchUp.y, catchUp.z, true, true, true);
+	}
+	else
+	{
+		ENTITY::SET_ENTITY_COORDS_NO_OFFSET(clone, catchUp.x, catchUp.y, catchUp.z, true, true, true);
+	}
+}
+
 AggressivePerceptionState& GetAggressivePerceptionState(int clone)
 {
 	for (auto& state : g_AggressivePerception)
-	{
 		if (state.Clone == clone)
 			return state;
-	}
 	for (auto& state : g_AggressivePerception)
 	{
 		if (!state.Clone || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
@@ -181,7 +209,6 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 {
 	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
 		return 0;
-
 	auto& state = GetAggressivePerceptionState(clone);
 	const auto now = Clock::now();
 	if (state.Target && now < state.NextScan && now - state.LastSeen <= kAggressiveTargetMemory && IsTargetInsideMemoryLeash(clone, state.Target, radius))
@@ -209,7 +236,6 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 			continue;
 		if ((horizontalSq <= 0.001f && dz * dz > 1.0f) || (horizontalSq > 0.001f && dz * dz > kAggressiveVerticalTanSq * horizontalSq))
 			continue;
-
 		const float score = ScoreAggressiveCandidate(distanceSq, radiusSq, forwardDot, horizontalSq, ped.Handle == state.Target);
 		for (std::size_t slot = 0; slot < candidates.size(); ++slot)
 		{
@@ -241,7 +267,6 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 			bestTarget = candidate;
 		}
 	}
-
 	if (state.Target && currentVisibleScore >= 0.0f && bestTarget && bestTarget != state.Target && bestScore < currentVisibleScore + kAggressiveSwitchMargin)
 	{
 		bestTarget = state.Target;
@@ -277,6 +302,7 @@ void StableEnsureCloneWeaponEquipped(int clone, Hash desiredWeapon)
 		state.WeaponMismatchSince = {};
 		return;
 	}
+
 	const auto now = Clock::now();
 	if (state.WeaponMismatchSince == Clock::time_point{})
 	{
@@ -285,15 +311,17 @@ void StableEnsureCloneWeaponEquipped(int clone, Hash desiredWeapon)
 	}
 	if (now - state.WeaponMismatchSince < kWeaponMismatchGrace)
 		return;
-	const bool inCombat = PED::IS_PED_IN_COMBAT(clone, 0);
+
+	// Outside combat the engine is allowed to holster normally. The old periodic
+	// force-equip was the main source of the endless draw/stow animation loop.
+	if (!PED::IS_PED_IN_COMBAT(clone, 0))
+		return;
 	const bool mounted = PED::IS_PED_ON_MOUNT(clone);
-	const auto retry = inCombat ? kWeaponCombatRetry : (mounted ? kWeaponMountedRetry : kWeaponIdleRetry);
+	if (mounted && IsCloneMeleeWeapon(desiredWeapon))
+		return;
+	const auto retry = mounted ? kWeaponMountedCombatRetry : kWeaponCombatRetry;
 	if (state.LastWeaponForce != Clock::time_point{} && now - state.LastWeaponForce < retry)
 		return;
-
-	// The weapon is given once during spawn. Repeated GIVE+SET calls were able to
-	// restart the draw/stow transition forever, so audits only reselect it after
-	// a persistent mismatch and use long cooldowns outside combat.
 	WEAPON::SET_CURRENT_PED_WEAPON(clone, desiredWeapon, true, 0, false, false);
 	state.LastWeaponForce = now;
 	state.WeaponMismatchSince = now;
@@ -373,6 +401,7 @@ int AcquireGuardHorse(int clone, int owner, bool allowSpawn)
 			return actualMount;
 		}
 	}
+
 	const auto now = Clock::now();
 	if (state.Horse && ENTITY::DOES_ENTITY_EXIST(state.Horse) && !ENTITY::IS_ENTITY_DEAD(state.Horse))
 	{
@@ -387,6 +416,7 @@ int AcquireGuardHorse(int clone, int owner, bool allowSpawn)
 	if (now < state.NextHorseAcquire)
 		return 0;
 	state.NextHorseAcquire = now + kGuardHorseAcquireInterval + std::chrono::milliseconds((clone & 0x7) * 70);
+
 	if (const int nearby = FindUnclaimedFreeHorse(clone, owner))
 	{
 		if (state.HorseOwned && state.Horse != nearby)
@@ -397,6 +427,16 @@ int AcquireGuardHorse(int clone, int owner, bool allowSpawn)
 	}
 	if (!allowSpawn)
 		return 0;
+
+	// Abandon a stale/busy assignment before creating the fallback mount so one
+	// clone can never accumulate multiple private horses across failed attempts.
+	if (state.HorseOwned)
+		DeleteSupportHorse(state);
+	else
+	{
+		state.Horse = 0;
+		state.MountTaskIssuedAt = {};
+	}
 	const int spawned = SpawnDedicatedGuardHorse(clone);
 	if (spawned)
 	{
@@ -442,19 +482,20 @@ int FindProfessionalBodyguardThreat(int clone, int owner, float)
 {
 	if (!clone || !owner || !ENTITY::DOES_ENTITY_EXIST(clone) || !ENTITY::DOES_ENTITY_EXIST(owner))
 		return 0;
+	CatchUpBodyguardToOwner(clone, owner);
 	const auto now = Clock::now();
 	if (g_BodyguardThreatCache.Owner == owner && now < g_BodyguardThreatCache.Expires)
 	{
 		const int cached = g_BodyguardThreatCache.Threat;
 		return IsAnyLiveHumanPedTarget(cached, clone) ? cached : 0;
 	}
+
 	g_BodyguardThreatCache.Owner = owner;
 	g_BodyguardThreatCache.Threat = 0;
 	g_BodyguardThreatCache.Expires = now + kGuardThreatCacheInterval;
 	const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
 	int best{};
 	float bestDistanceSq = 3.0e30f;
-
 	for (const auto& managed : g_ManagedClones)
 	{
 		if (!managed.Ped || managed.Ped == clone || managed.Mode != CloneMode::AttackOwner || !IsAnyLiveHumanPedTarget(managed.Ped, clone))
@@ -500,31 +541,13 @@ void MaintainProfessionalBodyguardFollow(int clone, int owner, Clock::time_point
 	if (!clone || !owner || !ENTITY::DOES_ENTITY_EXIST(clone) || !ENTITY::DOES_ENTITY_EXIST(owner))
 		return;
 	PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, true);
-	Vector3 clonePos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
+	CatchUpBodyguardToOwner(clone, owner);
+	const Vector3 clonePos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
 	const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
-	float dSq = DistanceSquared(clonePos, ownerPos);
+	const float dSq = DistanceSquared(clonePos, ownerPos);
 	const int formation = GetBodyguardFormationIndex(clone);
 	const float sideOffset = static_cast<float>((formation % 3) - 1) * 2.4f;
 	const float backOffset = -2.8f - static_cast<float>(formation / 3) * 2.0f;
-
-	if (dSq > kGuardCatchUpWarpDistance * kGuardCatchUpWarpDistance && !PED::IS_PED_IN_COMBAT(clone, 0))
-	{
-		const Vector3 catchUp = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(owner, sideOffset, backOffset - 5.0f, 0.35f);
-		if (PED::IS_PED_ON_MOUNT(clone))
-		{
-			const int mount = PED::GET_MOUNT(clone);
-			if (mount && ENTITY::DOES_ENTITY_EXIST(mount))
-				ENTITY::SET_ENTITY_COORDS_NO_OFFSET(mount, catchUp.x, catchUp.y, catchUp.z, true, true, true);
-		}
-		else
-		{
-			ENTITY::SET_ENTITY_COORDS_NO_OFFSET(clone, catchUp.x, catchUp.y, catchUp.z, true, true, true);
-		}
-		clonePos = catchUp;
-		dSq = DistanceSquared(clonePos, ownerPos);
-		followIssued = false;
-		nextFollow = now;
-	}
 
 	const bool ownerMounted = GetPlayerMountHandle() != 0;
 	const bool shouldUseHorse = ownerMounted || dSq > kGuardHorseTriggerDistance * kGuardHorseTriggerDistance;
@@ -548,7 +571,6 @@ void MaintainProfessionalBodyguardFollow(int clone, int owner, Clock::time_point
 	}
 	if (now < nextFollow && followIssued)
 		return;
-
 	const bool isFar = dSq > 70.0f * 70.0f;
 	const bool isVeryFar = dSq > 180.0f * 180.0f;
 	const float speed = mounted ? (isVeryFar ? 7.0f : (isFar ? 6.0f : 4.0f)) : (isVeryFar ? 5.0f : (isFar ? 4.0f : 2.4f));
