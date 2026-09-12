@@ -1,4 +1,5 @@
 #include "ManualClone.hpp"
+#include "util/Rewards.hpp"
 
 #define ManualCloneItem ManualCloneItemLegacy
 #define CreateManualCloneItem CreateManualCloneItemLegacy
@@ -38,6 +39,8 @@ namespace YimMenu::Submenus
 
         std::array<BodyguardMountMirrorState, kMaxActiveClones> g_BodyguardMountMirror{};
         std::array<CloneRadarBlipState, kMaxActiveClones> g_CloneRadarBlips{};
+
+#include "ManualCloneLifeLoot.inc"
 
         void RemoveCloneRadarBlip(CloneRadarBlipState& state)
         {
@@ -248,6 +251,7 @@ namespace YimMenu::Submenus
                 bool hasBodyguards = false;
 
                 SyncCloneRadarBlips();
+                SyncCloneLifeAndLoot(owner, now);
 
                 for (const auto& managed : g_ManagedClones)
                 {
