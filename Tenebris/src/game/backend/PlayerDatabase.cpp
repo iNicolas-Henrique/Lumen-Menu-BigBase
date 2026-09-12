@@ -138,7 +138,7 @@ namespace YimMenu
 		if (!player || player->trust)
 			return;
 
-		const auto [_, inserted] = player->infractions.insert((int)infraction);
+		const bool inserted = player->infractions.insert((int)infraction).second;
 		bool changed = inserted;
 		if (!player->is_modder)
 		{
