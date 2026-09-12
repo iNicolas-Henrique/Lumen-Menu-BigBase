@@ -209,7 +209,7 @@ namespace YimMenu
         if (!plyr.IsValid())
             return;
 
-        const Ped ped = plyr.GetPed();
+        Ped ped = plyr.GetPed();
         if (!ped.IsValid() || ped == selfPed || (ped.IsDead() && !Features::_ESPDrawDeadPlayers.GetState()))
             return;
 
@@ -275,7 +275,7 @@ namespace YimMenu
 
         if (showNetwork && ped.IsNetworked())
         {
-            const auto owner = Player(ped.GetOwner());
+            auto owner = Player(ped.GetOwner());
             info += std::format("{} {} ", ped.GetNetworkObjectId(), owner.GetName());
         }
 
@@ -325,7 +325,7 @@ namespace YimMenu
         if (!drawList)
             return;
 
-        const Ped selfPed = Self::GetPed();
+        Ped selfPed = Self::GetPed();
         if (!selfPed.IsValid())
             return;
         const auto selfPosition = selfPed.GetPosition();
