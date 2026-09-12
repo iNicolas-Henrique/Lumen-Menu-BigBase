@@ -70,16 +70,33 @@ namespace YimMenu
 		AttemptCreateBackup();
 		OpenOutputStreams();
 
+		constexpr auto flushInterval = std::chrono::milliseconds(250);
 		Logger::Init();
 		Logger::AddSink([this](LogMessagePtr msg) {
-			m_ConsoleOut << LogSink::FormatConsole(msg);
+			if (!m_AttachConsole || !m_ConsoleOut.is_open())
+				return;
 
-			m_ConsoleOut.flush();
+			m_ConsoleOut << LogSink::FormatConsole(msg);
+			const auto now = std::chrono::steady_clock::now();
+			const bool urgent = msg && msg->Level() >= al::WARNING;
+			if (urgent || now >= m_NextConsoleFlush)
+			{
+				m_ConsoleOut.flush();
+				m_NextConsoleFlush = now + flushInterval;
+			}
 		});
 		Logger::AddSink([this](LogMessagePtr msg) {
-			m_FileOut << LogSink::FormatFile(msg);
+			if (!m_FileOut.is_open())
+				return;
 
-			m_FileOut.flush();
+			m_FileOut << LogSink::FormatFile(msg);
+			const auto now = std::chrono::steady_clock::now();
+			const bool urgent = msg && msg->Level() >= al::WARNING;
+			if (urgent || now >= m_NextFileFlush)
+			{
+				m_FileOut.flush();
+				m_NextFileFlush = now + flushInterval;
+			}
 		});
 
 		return true;
@@ -92,13 +109,19 @@ namespace YimMenu
 
 		if (m_AttachConsole)
 		{
-			m_ConsoleOut.close();
+			if (m_ConsoleOut.is_open())
+			{
+				m_ConsoleOut.flush();
+				m_ConsoleOut.close();
+			}
 			FreeConsole();
 		}
 		else
 		{
-			m_ConsoleOut.open("CONOUT$", std::ios_base::out | std::ios_base::app);
 			AllocConsole();
+			m_ConsoleOut.clear();
+			m_ConsoleOut.open("CONOUT$", std::ios_base::out | std::ios_base::app);
+			m_NextConsoleFlush = {};
 		}
 
 		m_AttachConsole = !m_AttachConsole;
@@ -106,9 +129,16 @@ namespace YimMenu
 
 	void LogHelper::CloseOutputStreams()
 	{
-		if (m_AttachConsole)
+		if (m_AttachConsole && m_ConsoleOut.is_open())
+		{
+			m_ConsoleOut.flush();
 			m_ConsoleOut.close();
-		m_FileOut.close();
+		}
+		if (m_FileOut.is_open())
+		{
+			m_FileOut.flush();
+			m_FileOut.close();
+		}
 	}
 
 	void LogHelper::OpenOutputStreams()
@@ -116,6 +146,8 @@ namespace YimMenu
 		if (m_AttachConsole)
 			m_ConsoleOut.open("CONOUT$", std::ios_base::out | std::ios_base::app);
 		m_FileOut.open(m_File, std::ios::out | std::ios::trunc);
+		m_NextConsoleFlush = {};
+		m_NextFileFlush = {};
 	}
 
 	void LogHelper::AttemptCreateBackup()
