@@ -82,7 +82,6 @@ namespace YimMenu
 		g_SettingsInstance.LoadSettings();
 
 		auto selfSubmenu = std::make_shared<Submenus::Self>();
-		// Ability-card modification editors were intentionally removed from the UI.
 		Submenus::InstallHorseBonding(selfSubmenu);
 		AddSelfShortcuts(selfSubmenu);
 		UIManager::AddSubmenu(std::move(selfSubmenu));
@@ -163,9 +162,10 @@ namespace YimMenu
 		ImFontConfig FontCfg{};
 		FontCfg.FontDataOwnedByAtlas = false;
 
-		Menu::Font::g_DefaultFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
-		Menu::Font::g_OptionsFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
-		Menu::Font::g_ChildTitleFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
+		auto* uiFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
+		Menu::Font::g_DefaultFont = uiFont;
+		Menu::Font::g_OptionsFont = uiFont;
+		Menu::Font::g_ChildTitleFont = uiFont;
 		Menu::Font::g_ChatFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 22.0f, &FontCfg);
 		Menu::Font::g_OverlayFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 16.0f, &FontCfg);
 
