@@ -99,7 +99,9 @@ namespace YimMenu::Submenus
 		bringOpts->AddItem(std::make_shared<CommandItem>("bringvehs"_J));
 		bringOpts->AddItem(std::make_shared<CommandItem>("bringobjs"_J));
 		auto minigames = std::make_shared<Group>("Minijogos", 1);
-		minigames->AddItem(std::make_shared<BoolCommandItem>("nearbyhostilepeds"_J));
+		minigames->AddItem(std::make_shared<BoolCommandItem>("undeadnightmare"_J));
+		minigames->AddItem(std::make_shared<ConditionalItem>("undeadnightmare"_J, std::make_shared<BoolCommandItem>("zombieslogging"_J)));
+		minigames->AddItem(std::make_shared<ConditionalItem>("undeadnightmare"_J, std::make_shared<BoolCommandItem>("hardmode"_J)));
 		auto misc = std::make_shared<Group>("Diversos");
 		misc->AddItem(std::make_shared<BoolCommandItem>("disableguardzones"_J));
 		auto eventOverride = std::make_shared<Group>("", 1);
