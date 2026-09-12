@@ -218,6 +218,7 @@ namespace YimMenu::Submenus
 		auto syncGroup = std::make_shared<Group>("Sincronização");
 		auto networkEventGroup = std::make_shared<Group>("Eventos de rede");
 		auto scriptEventGroup = std::make_shared<Group>("Eventos de script");
+		auto performance = std::make_shared<Group>("Desempenho", 1);
 		auto playerEsp = std::make_shared<Group>("ESP de jogadores", 10);
 		auto pedEsp = std::make_shared<Group>("ESP de PEDs", 10);
 		auto overlay = std::make_shared<Group>("Sobreposição");
@@ -225,6 +226,12 @@ namespace YimMenu::Submenus
 		auto misc = std::make_shared<Group>("Diversos");
 
 		hotkeys->AddItem(std::make_shared<ImGuiItem>(DrawHotkeySettings, "Teclas de atalho", "Permite definir teclas para executar comandos sem procurar a opção no menu."));
+
+		performance->AddItem(std::make_shared<BoolCommandItem>("perfmenuanimations"_J));
+		performance->AddItem(std::make_shared<BoolCommandItem>("perfmenushadows"_J));
+		performance->AddItem(std::make_shared<BoolCommandItem>("perfeditoranimations"_J));
+		performance->AddItem(std::make_shared<BoolCommandItem>("perfnotificationanimations"_J));
+		performance->AddItem(std::make_shared<BoolCommandItem>("perfnotificationprogress"_J));
 
 		playerEsp->AddItem(std::make_shared<BoolCommandItem>("espdrawplayers"_J));
 		playerEsp->AddItem(std::make_shared<ConditionalItem>("espdrawplayers"_J, std::make_shared<BoolCommandItem>("espdrawdeadplayers"_J)));
@@ -279,6 +286,7 @@ namespace YimMenu::Submenus
 		scriptEventGroup->AddItem(std::make_shared<BoolCommandItem>("blockstableevents"_J));
 		scriptEventGroup->AddItem(std::make_shared<BoolCommandItem>("blockkickfrommissionlobby"_J));
 
+		gui->AddItem(performance);
 		gui->AddItem(playerEsp);
 		gui->AddItem(pedEsp);
 		gui->AddItem(overlay);
