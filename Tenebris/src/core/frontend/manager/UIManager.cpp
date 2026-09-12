@@ -19,7 +19,6 @@ namespace YimMenu
 {
 	namespace
 	{
-		constexpr ImU32 kDarkGreen = IM_COL32(34, 48, 11, 255);
 		constexpr ImU32 kLightGreen = IM_COL32(52, 77, 14, 255);
 
 		ImU32 ApplyAlpha(ImU32 color, float alpha)
@@ -276,9 +275,7 @@ namespace YimMenu
 				label.clear();
 				value.clear();
 				if (m_Level == Level::ConfirmShutdown)
-				{
 					label = Localization::Text(index == 0 ? "Sim" : "Não");
-				}
 				else if (m_Level == Level::Root)
 				{
 					if (index < m_Submenus.size())
@@ -304,9 +301,7 @@ namespace YimMenu
 				}
 
 				const bool selected = index == m_Selected;
-				const ImU32 rowColor = selected
-				    ? C(kLightGreen)
-				    : C(index % 2 ? IM_COL32(18, 21, 14, 235) : IM_COL32(10, 12, 8, 235));
+				const ImU32 rowColor = selected ? C(kLightGreen) : C(index % 2 ? IM_COL32(18, 21, 14, 235) : IM_COL32(10, 12, 8, 235));
 				drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y + kOptionHeight), rowColor);
 				if (selected)
 					drawList->AddRectFilled(ImVec2(kMenuX, y), ImVec2(kMenuX + 4.0f, y + kOptionHeight), white);
@@ -317,7 +312,7 @@ namespace YimMenu
 				DrawText(drawList, ImVec2(kMenuX + 10.0f * layout.Scale, y + 5.0f * layout.Scale), selected ? C(IM_COL32(10, 10, 10, 255)) : white, label, layout.Scale);
 				drawList->PopClipRect();
 				if (!value.empty())
-					DrawText(drawList, ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f), selected ? C(IM_COL32(10, 10, 10, 255)) : white, value, layout.Scale);
+					DrawText(drawList, ImVec2(kMenuX + kMenuWidth - rightWidth - 10.0f, y + 7.0f * layout.Scale), selected ? C(IM_COL32(10, 10, 10, 255)) : white, value, layout.Scale);
 				y += kOptionHeight;
 			}
 
@@ -330,7 +325,11 @@ namespace YimMenu
 
 			if (shadows)
 				drawList->AddRect(ImVec2(kMenuX - 2.0f, kMenuY - 2.0f), ImVec2(kMenuX + kMenuWidth + 2.0f, y + 2.0f), C(IM_COL32(12, 16, 7, 230)), 6.0f, 0, 4.0f);
-			drawList->AddRect(ImVec2(kMenuX, kMenuY), ImVec2(kMenuX + kMenuWidth, y), C(kLightGreen), 4.0f, 0, 1.0f);
+
+			// Side/bottom accent only: intentionally no green line above the Tenebris title.
+			drawList->AddLine(ImVec2(kMenuX, kMenuY), ImVec2(kMenuX, y), C(kLightGreen), 1.0f);
+			drawList->AddLine(ImVec2(kMenuX + kMenuWidth, kMenuY), ImVec2(kMenuX + kMenuWidth, y), C(kLightGreen), 1.0f);
+			drawList->AddLine(ImVec2(kMenuX, y), ImVec2(kMenuX + kMenuWidth, y), C(kLightGreen), 1.0f);
 		}
 
 		if (AdvancedEditor::IsOpen())
