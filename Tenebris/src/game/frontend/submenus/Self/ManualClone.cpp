@@ -57,18 +57,21 @@ namespace YimMenu::Submenus
 		constexpr float kHorseSearchRadius = 48.0f;
 		constexpr float kSocialRadius = 11.0f;
 		constexpr float kMourningRadius = 80.0f;
+		constexpr float kFollowStopRadius = 6.0f;
+		constexpr float kFollowResumeRadius = 10.0f;
 		constexpr std::size_t kMaxActiveClones = 8;
 		constexpr float kBleedOutSeconds = 12.0f;
 		constexpr int kBleedOutMilliseconds = 12000;
 		constexpr int kIncapacitationThreshold = 20;
 		constexpr int kMourningChancePercent = 22;
-		constexpr auto kPedCacheInterval = 400ms;
-		constexpr auto kBrainTick = 150ms;
-		constexpr auto kCombatDecisionInterval = 550ms;
-		constexpr auto kSocialDecisionInterval = 900ms;
-		constexpr auto kHorseDecisionInterval = 2200ms;
-		constexpr auto kFollowRefreshNear = 3000ms;
-		constexpr auto kFollowRefreshFar = 1000ms;
+		constexpr auto kPedCacheInterval = 800ms;
+		constexpr auto kBrainTick = 250ms;
+		constexpr auto kCombatDecisionInterval = 800ms;
+		constexpr auto kSocialDecisionInterval = 1800ms;
+		constexpr auto kWeaponAuditInterval = 1200ms;
+		constexpr auto kHorseDecisionInterval = 2600ms;
+		constexpr auto kFollowRefreshNear = 4500ms;
+		constexpr auto kFollowRefreshFar = 1600ms;
 		constexpr auto kFrenzyRoamRefresh = 4500ms;
 		constexpr auto kIdleSmokeDelay = 10s;
 		constexpr auto kMourningEmoteTime = 4500ms;
@@ -77,10 +80,8 @@ namespace YimMenu::Submenus
 		constexpr auto kCorpseKeepTime = 45s;
 		constexpr auto kFlourishTime = 10s;
 		constexpr auto kNormalEmoteTime = 3500ms;
-		constexpr auto kDisarmReactionCooldown = 20s;
 
 		inline constexpr ManualCloneEmotes::Definition kIdleSmokeEmote{"KIT_EMOTE_ACTION_SMOKE_CIGARETTE_1", 1};
-		inline constexpr ManualCloneEmotes::Definition kDisarmCryEmote{"KIT_EMOTE_TAUNT_BOOHOO_1", 2};
 
 		constexpr std::array kCloneWeapons = {
 		    CloneWeapon{"Desarmado", "Unarmed", "WEAPON_UNARMED"},
@@ -413,6 +414,15 @@ namespace YimMenu::Submenus
 			weapon = Joaat("WEAPON_UNARMED");
 			return ped && ENTITY::DOES_ENTITY_EXIST(ped) && WEAPON::GET_CURRENT_PED_WEAPON(ped, &weapon, true, 0, false);
 		}
+		void EnsureCloneWeaponEquipped(int clone, Hash desiredWeapon)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone)) return;
+			if (!desiredWeapon || desiredWeapon == Joaat("WEAPON_UNARMED") || TASK::IS_EMOTE_TASK_RUNNING(clone, 0)) return;
+			Hash currentWeapon{};
+			if (GetCurrentWeapon(clone, currentWeapon) && currentWeapon == desiredWeapon) return;
+			WEAPON::GIVE_WEAPON_TO_PED(clone, desiredWeapon, 999, true, true, 0, false, 0.5f, 1.0f, 1.0f, false, 0, false);
+			WEAPON::SET_CURRENT_PED_WEAPON(clone, desiredWeapon, true, 0, false, false);
+		}
 		void PlayFullBodyEmote(int clone, const ManualCloneEmotes::Definition& emote)
 		{
 			TASK::TASK_PLAY_EMOTE_WITH_HASH(clone, emote.Category, 2, Joaat(emote.Name), false, false, false, false, false);
@@ -435,10 +445,7 @@ namespace YimMenu::Submenus
 				ScriptMgr::Yield(kBrainTick);
 			}
 			if (restoreWeapon && hadWeapon && ENTITY::DOES_ENTITY_EXIST(clone) && !ENTITY::IS_ENTITY_DEAD(clone))
-			{
-				Hash current{};
-				if (GetCurrentWeapon(clone, current) && current == Joaat("WEAPON_UNARMED")) WEAPON::SET_CURRENT_PED_WEAPON(clone, previousWeapon, true, 0, false, false);
-			}
+				WEAPON::SET_CURRENT_PED_WEAPON(clone, previousWeapon, true, 0, false, false);
 		}
 		void PlayRareSocialReaction(int clone, int faceTarget, bool flourish, bool insult = false)
 		{
@@ -486,13 +493,22 @@ namespace YimMenu::Submenus
 			weaponIndex = std::clamp(weaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
 			WEAPON::REMOVE_ALL_PED_WEAPONS(clone, true, true);
 			const Hash weapon = Joaat(kCloneWeapons[weaponIndex].HashName);
-			if (weapon != Joaat("WEAPON_UNARMED")) { WEAPON::GIVE_WEAPON_TO_PED(clone, weapon, 999, true, true, 0, false, 0.5f, 1.0f, 1.0f, false, 0, false); WEAPON::SET_CURRENT_PED_WEAPON(clone, weapon, true, 0, false, false); }
+			if (weapon != Joaat("WEAPON_UNARMED"))
+			{
+				WEAPON::GIVE_WEAPON_TO_PED(clone, weapon, 999, true, true, 0, false, 0.5f, 1.0f, 1.0f, false, 0, false);
+				WEAPON::SET_CURRENT_PED_WEAPON(clone, weapon, true, 0, false, false);
+			}
+			else
+			{
+				WEAPON::SET_CURRENT_PED_WEAPON(clone, weapon, true, 0, false, false);
+			}
 			return weapon;
 		}
-		void TaskVanillaCombat(int clone, int target, int owner)
+		void TaskVanillaCombat(int clone, int target, int owner, Hash desiredWeapon)
 		{
 			const bool validTarget = target == owner || IsHostileManagedCloneForOwner(target) || IsValidNpcTarget(target, clone, owner);
 			if (!validTarget) return;
+			EnsureCloneWeaponEquipped(clone, desiredWeapon);
 			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false); PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.0f); TASK::TASK_COMBAT_PED(clone, target, 0, 16);
 		}
 		bool TryMountForFollow(int clone, int owner)
@@ -507,16 +523,29 @@ namespace YimMenu::Submenus
 			if (horse) { TASK::TASK_MOUNT_ANIMAL(clone, horse, 5000, -1, 2.0f, 1, 0, 0); return true; }
 			return false;
 		}
-		void MaintainBodyguardFollow(int clone, int owner, Clock::time_point now, Clock::time_point& nextHorse, Clock::time_point& nextFollow)
+		void MaintainBodyguardFollow(int clone, int owner, Clock::time_point now, Clock::time_point& nextHorse, Clock::time_point& nextFollow, bool& followIssued)
 		{
 			if (!clone || !owner || !ENTITY::DOES_ENTITY_EXIST(clone) || !ENTITY::DOES_ENTITY_EXIST(owner)) return;
 			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, true);
 			const float dSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(owner, true, false));
+			if (dSq <= kFollowStopRadius * kFollowStopRadius)
+			{
+				if (followIssued)
+				{
+					TASK::CLEAR_PED_TASKS(clone, true, false);
+					followIssued = false;
+				}
+				PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.0f);
+				nextFollow = now + 750ms;
+				return;
+			}
+			if (!followIssued && dSq < kFollowResumeRadius * kFollowResumeRadius) return;
 			const bool isFar = dSq > 70.0f * 70.0f, isVeryFar = dSq > 180.0f * 180.0f;
 			if (now >= nextHorse && (GetPlayerMountHandle() || isFar)) { TryMountForFollow(clone, owner); nextHorse = now + kHorseDecisionInterval; }
-			if (now < nextFollow || dSq <= 7.0f * 7.0f) return;
+			if (now < nextFollow && followIssued) return;
 			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, isVeryFar ? 1.65f : (isFar ? 1.45f : 1.1f));
 			TASK::TASK_FOLLOW_TO_OFFSET_OF_ENTITY(clone, owner, 1.8f, -2.8f, 0.0f, isVeryFar ? 5.0f : (isFar ? 4.0f : 2.4f), -1, 3.0f, true, true, false, true, true, true);
+			followIssued = true;
 			nextFollow = now + (isFar ? kFollowRefreshFar : kFollowRefreshNear);
 		}
 
@@ -525,8 +554,8 @@ namespace YimMenu::Submenus
 		void RunCloneBrain(int clone, int owner, CloneOptions options, Hash equippedWeapon)
 		{
 			int currentTarget{}, issuedTarget{}, lastHealth = ENTITY::GET_ENTITY_HEALTH(clone);
-			bool sawIncapacitation{}, insultedOnBetrayal{}, smoking{}, frenzyRoaming{}, armedSeen = equippedWeapon != Joaat("WEAPON_UNARMED");
-			auto nextDecision = Clock::now(), nextSocial = Clock::now() + 3s, nextIdleEmote = Clock::now() + 18s, nextHorse = Clock::now(), nextFollow = Clock::now(), nextRoam = Clock::now(), nextDisarmReaction = Clock::time_point{}, idleSince = Clock::now();
+			bool sawIncapacitation{}, insultedOnBetrayal{}, smoking{}, frenzyRoaming{}, followIssued{};
+			auto nextDecision = Clock::now(), nextSocial = Clock::now() + 3s, nextIdleEmote = Clock::now() + 18s, nextHorse = Clock::now(), nextFollow = Clock::now(), nextRoam = Clock::now(), nextWeaponAudit = Clock::now(), idleSince = Clock::now();
 			while (clone && ENTITY::DOES_ENTITY_EXIST(clone))
 			{
 				if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner)) break;
@@ -535,26 +564,20 @@ namespace YimMenu::Submenus
 				const bool damagedByOwner = ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(clone, owner, true, true);
 				if (options.Mode == CloneMode::Bodyguard && !g_BodyguardsBetrayed && health < lastHealth && damagedByOwner) g_BodyguardsBetrayed = true;
 				lastHealth = health;
-
-				Hash currentWeapon{};
-				if (GetCurrentWeapon(clone, currentWeapon))
-				{
-					if (currentWeapon != Joaat("WEAPON_UNARMED")) armedSeen = true;
-					else if (armedSeen && equippedWeapon != Joaat("WEAPON_UNARMED") && damagedByOwner && PED::IS_PED_IN_COMBAT(clone, 0) && now >= nextDisarmReaction)
-					{
-						armedSeen = false; currentTarget = 0; issuedTarget = 0;
-						PlayTimedEmote(clone, owner, kDisarmCryEmote, options.EmoteFlourish, true, false);
-						nextDisarmReaction = Clock::now() + kDisarmReactionCooldown; nextDecision = Clock::now();
-					}
-				}
 				if (damagedByOwner) ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
 
 				if (PED::IS_PED_INCAPACITATED(clone))
 				{
-					if (!sawIncapacitation) { sawIncapacitation = true; currentTarget = 0; issuedTarget = 0; PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false); }
+					if (!sawIncapacitation) { sawIncapacitation = true; currentTarget = 0; issuedTarget = 0; followIssued = false; PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false); }
 					ScriptMgr::Yield(kBrainTick); continue;
 				}
 				if (ENTITY::IS_ENTITY_DEAD(clone)) { MarkCloneDead(clone); if (clone == g_MourningClone) ResetMourning(); MaybeStartMourning(clone, options.Mode); break; }
+
+				if (now >= nextWeaponAudit)
+				{
+					EnsureCloneWeaponEquipped(clone, equippedWeapon);
+					nextWeaponAudit = now + kWeaponAuditInterval;
+				}
 
 				if (clone == g_MourningClone)
 				{
@@ -564,14 +587,19 @@ namespace YimMenu::Submenus
 						if (!g_MourningFleeIssued) { TASK::CLEAR_PED_TASKS(clone, true, false); if (g_MourningDeadClone && ENTITY::DOES_ENTITY_EXIST(g_MourningDeadClone)) TASK::TASK_SMART_FLEE_PED(clone, g_MourningDeadClone, 55.0f, 7000, 0, 3.0f, 0); else TASK::TASK_WANDER_STANDARD(clone, 1.0f, 0); g_MourningFleeIssued = true; }
 						ScriptMgr::Yield(kBrainTick); continue;
 					}
-					ResetMourning(); currentTarget = 0; issuedTarget = 0; nextDecision = now;
+					ResetMourning(); currentTarget = 0; issuedTarget = 0; followIssued = false; nextDecision = now;
 				}
 
 				CloneMode effectiveMode = options.Mode;
 				if (options.Mode == CloneMode::Bodyguard && g_BodyguardsBetrayed)
 				{
 					effectiveMode = CloneMode::AttackOwner; PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false);
-					if (!insultedOnBetrayal && !PED::IS_PED_IN_COMBAT(clone, owner)) { PlayRareSocialReaction(clone, owner, options.EmoteFlourish, true); insultedOnBetrayal = true; nextDecision = Clock::now(); }
+					if (!insultedOnBetrayal && !PED::IS_PED_IN_COMBAT(clone, owner))
+					{
+						PlayRareSocialReaction(clone, owner, options.EmoteFlourish, true);
+						EnsureCloneWeaponEquipped(clone, equippedWeapon);
+						insultedOnBetrayal = true; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+					}
 				}
 
 				if (now >= nextDecision)
@@ -583,43 +611,61 @@ namespace YimMenu::Submenus
 					else if (effectiveMode == CloneMode::AttackOwner && keepCurrent) keepCurrent = currentTarget == owner;
 					if (!keepCurrent)
 					{
-						if (targetWasPresent) TASK::CLEAR_PED_TASKS(clone, true, false);
-						currentTarget = effectiveMode == CloneMode::AttackOwner ? owner : (effectiveMode == CloneMode::Bodyguard ? FindBodyguardThreat(clone, owner) : FindNearestNpcTarget(clone, owner, kFrenzySearchRadius)); issuedTarget = 0;
+						if (targetWasPresent && issuedTarget) TASK::CLEAR_PED_TASKS(clone, true, false);
+						currentTarget = effectiveMode == CloneMode::AttackOwner ? owner : (effectiveMode == CloneMode::Bodyguard ? FindBodyguardThreat(clone, owner) : FindNearestNpcTarget(clone, owner, kFrenzySearchRadius));
+						issuedTarget = 0;
+						followIssued = false;
 					}
 					if (currentTarget && ENTITY::DOES_ENTITY_EXIST(currentTarget) && !ENTITY::IS_ENTITY_DEAD(currentTarget))
 					{
-						smoking = false; frenzyRoaming = false; idleSince = now;
-						if (issuedTarget != currentTarget || !PED::IS_PED_IN_COMBAT(clone, currentTarget)) { TaskVanillaCombat(clone, currentTarget, owner); issuedTarget = currentTarget; }
+						smoking = false; frenzyRoaming = false; followIssued = false; idleSince = now;
+						if (issuedTarget != currentTarget || !PED::IS_PED_IN_COMBAT(clone, currentTarget)) { TaskVanillaCombat(clone, currentTarget, owner, equippedWeapon); issuedTarget = currentTarget; }
 					}
 					else if (effectiveMode == CloneMode::Bodyguard)
 					{
-						issuedTarget = 0; MaintainBodyguardFollow(clone, owner, now, nextHorse, nextFollow);
+						issuedTarget = 0;
+						MaintainBodyguardFollow(clone, owner, now, nextHorse, nextFollow, followIssued);
 						const float dSq = DistanceSquared(ENTITY::GET_ENTITY_COORDS(clone, true, false), ENTITY::GET_ENTITY_COORDS(owner, true, false));
 						if (dSq <= 9.0f * 9.0f && ENTITY::GET_ENTITY_SPEED(clone) < 0.25f && ENTITY::GET_ENTITY_SPEED(owner) < 0.25f)
 						{
 							const Vector3 pos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
-							if (now - idleSince >= kIdleSmokeDelay && !smoking && !PATHFIND::IS_POINT_ON_ROAD(pos.x, pos.y, pos.z, 0)) { PlayTimedEmote(clone, owner, kIdleSmokeEmote, false, false); smoking = true; nextFollow = Clock::now(); }
+							if (now - idleSince >= kIdleSmokeDelay && !smoking && !PATHFIND::IS_POINT_ON_ROAD(pos.x, pos.y, pos.z, 0))
+							{
+								PlayTimedEmote(clone, owner, kIdleSmokeEmote, false, false);
+								EnsureCloneWeaponEquipped(clone, equippedWeapon);
+								smoking = true; followIssued = false; nextFollow = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+							}
 						}
 						else { idleSince = now; smoking = false; }
 					}
 					else if (effectiveMode == CloneMode::FrenzyNpcs)
 					{
-						issuedTarget = 0; smoking = false; PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false); PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.35f);
+						issuedTarget = 0; smoking = false; followIssued = false; PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false); PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.35f);
 						if (!frenzyRoaming || now >= nextRoam) { TASK::CLEAR_PED_TASKS(clone, true, false); TASK::TASK_WANDER_STANDARD(clone, 1.0f, 0); frenzyRoaming = true; nextRoam = now + kFrenzyRoamRefresh; }
 					}
-					else { issuedTarget = 0; currentTarget = owner; }
+					else { issuedTarget = 0; currentTarget = owner; followIssued = false; }
 					nextDecision = Clock::now() + kCombatDecisionInterval;
 				}
 
 				if (Clock::now() >= nextSocial && !currentTarget && !PED::IS_PED_IN_COMBAT(clone, 0))
 				{
 					const int interactingPlayer = FindInteractingEmotePlayer(clone);
-					if (interactingPlayer) { PlayRareSocialReaction(clone, interactingPlayer, options.EmoteFlourish, false); nextDecision = Clock::now(); }
+					if (interactingPlayer)
+					{
+						PlayRareSocialReaction(clone, interactingPlayer, options.EmoteFlourish, false);
+						EnsureCloneWeaponEquipped(clone, equippedWeapon);
+						followIssued = false; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+					}
 					nextSocial = Clock::now() + kSocialDecisionInterval;
 				}
 				if (Clock::now() >= nextIdleEmote && !currentTarget && !smoking && !PED::IS_PED_IN_COMBAT(clone, 0))
 				{
-					if (RandomInt(1, 100) <= 4 && IsWithinRange(clone, owner, kSocialRadius)) { PlayRareSocialReaction(clone, owner, options.EmoteFlourish, false); nextDecision = Clock::now(); }
+					if (RandomInt(1, 100) <= 4 && IsWithinRange(clone, owner, kSocialRadius))
+					{
+						PlayRareSocialReaction(clone, owner, options.EmoteFlourish, false);
+						EnsureCloneWeaponEquipped(clone, equippedWeapon);
+						followIssued = false; nextDecision = Clock::now(); nextWeaponAudit = Clock::now() + kWeaponAuditInterval;
+					}
 					nextIdleEmote = Clock::now() + 24s;
 				}
 				ScriptMgr::Yield(kBrainTick);
@@ -640,6 +686,8 @@ namespace YimMenu::Submenus
 			ApplyPlayerPromptName(clone, options.SourcePlayerId); ConfigureBleedout(clone); ConfigureCloneLoot(clone);
 			options.WeaponIndex = std::clamp(options.WeaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
 			const Hash weapon = EquipCloneWeapon(clone, options.WeaponIndex);
+			ScriptMgr::Yield();
+			EnsureCloneWeaponEquipped(clone, weapon);
 			ConfigureCloneCombat(clone, options.Mode, kCloneWeapons[options.WeaponIndex].HashName); ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
 			g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode, options.Networked, {}}); g_NextPedCacheRefresh = {};
 			++g_TotalSpawned; if (g_TotalSpawned % 5 == 0) PruneManagedClones(true);
@@ -728,7 +776,7 @@ namespace YimMenu::Submenus
 				if (ImGui::BeginCombo("##CloneBehavior", modePreview)) { for (int i = 0; i < 3; ++i) { const auto mode = static_cast<CloneMode>(i); const char* label = Localization::IsPortuguese() ? ModeLabelPt(mode) : ModeLabelEn(mode); if (ImGui::Selectable(label, m_Mode == mode)) m_Mode = mode; } ImGui::EndCombo(); }
 				ImGui::Checkbox(Localization::IsPortuguese() ? "Floreio de emote (10 s)" : "Emote flourish (10 s)", &m_EmoteFlourish);
 				ImGui::TextWrapped("%s", Localization::IsPortuguese() ? "Guarda-costas entra no grupo do jogador e recebe seguimento persistente; combate/cobertura ficam com a IA padrão do RDR2. Frenético abandona cadáveres, procura outro NPC e continua vagando entre buscas." : "Bodyguards join the player group and keep persistent following; combat/cover use stock RDR2 AI. Frenzy abandons corpses, searches another NPC and keeps roaming between scans.");
-				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Emotes são full-body: armas são guardadas antes da animação e voltam depois. Arma realmente desarmada não é recriada." : "Emotes are full-body: weapons are stowed before the animation and return after it. A truly disarmed weapon is not recreated.");
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Emotes são full-body: armas são guardadas antes da animação e voltam depois. O Tenebris também reconfirma periodicamente a arma escolhida para impedir que o clone fique desarmado por engano." : "Emotes are full-body: weapons are stowed before the animation and return afterwards. Tenebris also periodically reasserts the selected weapon so the clone does not remain accidentally unarmed.");
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "REDE" : "NETWORK"); ImGui::Checkbox(Localization::IsPortuguese() ? "Ativar Network (visível para outros)" : "Enable Network (visible to others)", &m_Networked);
 				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Não: clone só no seu cliente. Sim: entidade de rede, outros podem receber/ver; pode haver mais desync/ownership." : "Off: clone exists only on your client. On: network entity others may receive/see; more desync/ownership is possible.");
 
