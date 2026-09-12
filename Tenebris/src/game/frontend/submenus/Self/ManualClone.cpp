@@ -19,6 +19,168 @@ namespace YimMenu::Submenus
 {
     namespace
     {
+        struct BodyguardMountMirrorState
+        {
+            int Clone{};
+            bool OwnerWasMounted{};
+            bool GuardWasMounted{};
+            bool SuppressingLegacyDistanceMount{};
+            Clock::time_point LastMountAttempt{};
+            Clock::time_point LastDismountAttempt{};
+        };
+
+        std::array<BodyguardMountMirrorState, kMaxActiveClones> g_BodyguardMountMirror{};
+
+        BodyguardMountMirrorState& GetBodyguardMountMirrorState(int clone)
+        {
+            for (auto& state : g_BodyguardMountMirror)
+            {
+                if (state.Clone == clone)
+                    return state;
+            }
+
+            for (auto& state : g_BodyguardMountMirror)
+            {
+                if (!state.Clone || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
+                {
+                    state = {};
+                    state.Clone = clone;
+                    return state;
+                }
+            }
+
+            g_BodyguardMountMirror[0] = {};
+            g_BodyguardMountMirror[0].Clone = clone;
+            return g_BodyguardMountMirror[0];
+        }
+
+        void SyncBodyguardMountState(int clone, int owner, bool ownerMounted, Clock::time_point now)
+        {
+            if (!clone || !owner || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) ||
+                !ENTITY::DOES_ENTITY_EXIST(owner) || ENTITY::IS_ENTITY_DEAD(owner))
+                return;
+
+            auto& mirror = GetBodyguardMountMirrorState(clone);
+            auto& support = GetCloneSupportState(clone);
+            const bool guardMounted = PED::IS_PED_ON_MOUNT(clone);
+            const bool inCombat = PED::IS_PED_IN_COMBAT(clone, 0);
+
+            if (ownerMounted)
+            {
+                // The old follow path also mounted guards merely for being far away.
+                // Clear the temporary blocker as soon as the owner actually mounts.
+                if (mirror.SuppressingLegacyDistanceMount)
+                {
+                    support.MountTaskIssuedAt = {};
+                    mirror.SuppressingLegacyDistanceMount = false;
+                }
+
+                if (guardMounted)
+                {
+                    // Successful mount: clear stale task timing so a later fall can
+                    // trigger an immediate remount instead of waiting for timeout.
+                    support.MountTaskIssuedAt = {};
+                    mirror.LastMountAttempt = {};
+                }
+                else if (!inCombat)
+                {
+                    const bool ownerJustMounted = !mirror.OwnerWasMounted;
+                    const bool guardJustFell = mirror.GuardWasMounted;
+                    const bool retryDue = mirror.LastMountAttempt == Clock::time_point{} || now - mirror.LastMountAttempt >= 900ms;
+                    if ((ownerJustMounted || guardJustFell || retryDue) && retryDue)
+                    {
+                        // Reuse the assigned horse first. AcquireGuardHorse only
+                        // searches/spawns a replacement if that horse is no longer usable.
+                        support.MountTaskIssuedAt = {};
+                        ForceGuardMount(clone, owner, true);
+                        mirror.LastMountAttempt = now;
+                    }
+                }
+            }
+            else
+            {
+                if (guardMounted)
+                {
+                    const bool retryDue = mirror.LastDismountAttempt == Clock::time_point{} || now - mirror.LastDismountAttempt >= 1200ms;
+                    if (retryDue)
+                    {
+                        // Mirror the owner's state: normal dismount, while keeping
+                        // the assigned horse cached so it can be reused next time.
+                        TASK::TASK_DISMOUNT_ANIMAL(clone, 0, 0, 0, 0.0f, 0);
+                        mirror.LastDismountAttempt = now;
+                    }
+                }
+                else
+                {
+                    if (mirror.OwnerWasMounted && IsMountPlanActive(clone) && !inCombat)
+                    {
+                        // Owner dismounted while this guard was still running toward
+                        // a horse. Cancel that one stale mount task once; follow AI
+                        // will issue its normal on-foot follow again.
+                        TASK::CLEAR_PED_TASKS(clone, true, false);
+                    }
+
+                    const float dSq = DistanceSquared(
+                        ENTITY::GET_ENTITY_COORDS(clone, true, false),
+                        ENTITY::GET_ENTITY_COORDS(owner, true, false));
+
+                    if (!inCombat && dSq > kGuardHorseTriggerDistance * kGuardHorseTriggerDistance)
+                    {
+                        // MaintainProfessionalBodyguardFollow historically mounted a
+                        // distant guard even when the owner was on foot. Refreshing
+                        // this existing cooldown suppresses only that legacy path.
+                        support.MountTaskIssuedAt = now;
+                        mirror.SuppressingLegacyDistanceMount = true;
+                    }
+                    else if (mirror.SuppressingLegacyDistanceMount)
+                    {
+                        support.MountTaskIssuedAt = {};
+                        mirror.SuppressingLegacyDistanceMount = false;
+                    }
+                }
+            }
+
+            mirror.OwnerWasMounted = ownerMounted;
+            mirror.GuardWasMounted = PED::IS_PED_ON_MOUNT(clone);
+        }
+
+        void RunBodyguardMountMirror()
+        {
+            while (true)
+            {
+                auto self = Self::GetPed();
+                if (!self.IsValid() || self.GetHealth() <= 0)
+                {
+                    ScriptMgr::Yield(500ms);
+                    continue;
+                }
+
+                const int owner = self.GetHandle();
+                const bool ownerMounted = GetPlayerMountHandle() != 0;
+                const auto now = Clock::now();
+                bool hasBodyguards = false;
+
+                for (const auto& managed : g_ManagedClones)
+                {
+                    if (managed.Mode != CloneMode::Bodyguard || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
+                        continue;
+                    hasBodyguards = true;
+                    SyncBodyguardMountState(managed.Ped, owner, ownerMounted, now);
+                }
+
+                ScriptMgr::Yield(hasBodyguards ? 250ms : 700ms);
+            }
+        }
+
+        void EnsureBodyguardMountMirrorStarted()
+        {
+            static bool started{};
+            if (started)
+                return;
+            started = true;
+            FiberPool::Push([] { RunBodyguardMountMirror(); });
+        }
+
         const char* OptimizedCloneModeLabelPt(CloneMode mode)
         {
             return mode == CloneMode::Bodyguard ? "Guarda-costas" : "NPC padrão hostil (campo de visão)";
@@ -219,6 +381,7 @@ namespace YimMenu::Submenus
 
     std::shared_ptr<UIItem> CreateManualCloneItem()
     {
+        EnsureBodyguardMountMirrorStarted();
         return std::make_shared<ManualCloneItem>();
     }
 }
