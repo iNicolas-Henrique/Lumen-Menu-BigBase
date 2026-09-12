@@ -57,7 +57,6 @@ namespace YimMenu
 
 	void PlayerDatabase::Save()
 	{
-		// TODO: save in thread pool
 		json data;
 
 		for (auto& [rid, player] : m_Data)
@@ -136,15 +135,21 @@ namespace YimMenu
 
 	void PlayerDatabase::AddDetection(std::shared_ptr<persistent_player> player, Detection infraction)
 	{
-		if (!player->trust)
+		if (!player || player->trust)
+			return;
+
+		const auto [_, inserted] = player->infractions.insert((int)infraction);
+		bool changed = inserted;
+		if (!player->is_modder)
 		{
-			player->infractions.insert((int)infraction);
-			if (!player->is_modder)
-			{
-				player->is_modder = true;
-			}
-			Save();
+			player->is_modder = true;
+			changed = true;
 		}
+
+		// Repeated sync events often report the same infraction many times. Avoid
+		// rewriting the whole database unless persistent state actually changed.
+		if (changed)
+			Save();
 	}
 
 	void PlayerDatabase::RemoveRID(uint64_t rockstar_id)
