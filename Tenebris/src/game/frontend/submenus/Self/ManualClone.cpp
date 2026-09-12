@@ -32,6 +32,7 @@ namespace YimMenu::Submenus
 		enum class CloneMode : int { Bodyguard = 0, FrenzyNpcs = 1, AttackOwner = 2, BrawlExpedition = 3 };
 
 		struct CloneWeapon { const char* LabelPt; const char* LabelEn; const char* HashName; };
+		struct CloneWalkStyle { const char* LabelPt; const char* LabelEn; const char* Archetype; const char* MotionType; };
 		struct CloneOptions
 		{
 			int WeaponIndex{};
@@ -39,6 +40,9 @@ namespace YimMenu::Submenus
 			int SourcePlayerId{-1};
 			bool Networked{};
 			bool EmoteFlourish{true};
+			int Health{800};
+			float SeeingRange{220.0f};
+			int WalkStyleIndex{};
 		};
 		struct CachedPed { int Handle{}; Vector3 Position{}; bool Player{}; bool Dead{}; };
 		struct ManagedClone
@@ -51,9 +55,6 @@ namespace YimMenu::Submenus
 		};
 
 		constexpr int kCloneHealth = 800;
-		constexpr float kFrenzySearchRadius = 260.0f;
-		constexpr float kGuardRadius = 170.0f;
-		constexpr float kTargetLeashRadius = 220.0f;
 		constexpr float kHorseSearchRadius = 48.0f;
 		constexpr float kSocialRadius = 11.0f;
 		constexpr float kMourningRadius = 80.0f;
@@ -116,6 +117,21 @@ namespace YimMenu::Submenus
 		    CloneWeapon{"Escopeta serrada", "Sawed-Off Shotgun", "WEAPON_SHOTGUN_SAWEDOFF"},
 		    CloneWeapon{"Arco", "Bow", "WEAPON_BOW"},
 		    CloneWeapon{"Arco melhorado", "Improved Bow", "WEAPON_BOW_IMPROVED"},
+		};
+
+		constexpr std::array kCloneWalkStyles = {
+		    CloneWalkStyle{"Original do modelo", "Model default", "", ""},
+		    CloneWalkStyle{"Cowboy", "Cowboy", "cowboy", "normal"},
+		    CloneWalkStyle{"Arthur saudável", "Arthur healthy", "arthur_healthy", "normal"},
+		    CloneWalkStyle{"John Marston", "John Marston", "john_marston", "normal"},
+		    CloneWalkStyle{"Veterano de guerra", "War veteran", "war_veteran", "normal"},
+		    CloneWalkStyle{"Ferido", "Injured", "default", "injured_general"},
+		    CloneWalkStyle{"Muito bêbado", "Very drunk", "default", "very_drunk"},
+		    CloneWalkStyle{"Nervoso", "Nervous", "default", "nervous"},
+		    CloneWalkStyle{"Bravo", "Angry", "default", "angry"},
+		    CloneWalkStyle{"Triste", "Sad", "default", "sad"},
+		    CloneWalkStyle{"Cauteloso", "Cautious", "default", "cautious"},
+		    CloneWalkStyle{"Andar da cidade", "Town walk", "default", "normal_town"},
 		};
 
 		std::vector<ManagedClone> g_ManagedClones;
@@ -303,6 +319,17 @@ namespace YimMenu::Submenus
 			PED::SET_LOOTING_FLAG(clone, 0, true); PED::SET_LOOTING_FLAG(clone, 1, true);
 			WEAPON::SET_PED_DROPS_WEAPONS_WHEN_DEAD(clone, true); WEAPON::SET_PED_AMMO_TO_DROP(clone, 1, 1);
 		}
+		void ApplyCloneWalkStyle(int clone, int walkStyleIndex)
+		{
+			if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone)) return;
+			walkStyleIndex = std::clamp(walkStyleIndex, 0, static_cast<int>(kCloneWalkStyles.size()) - 1);
+			PED::_CLEAR_PED_DESIRED_LOCO_FOR_MODEL(clone);
+			PED::_CLEAR_PED_DESIRED_LOCO_MOTION_TYPE(clone);
+			if (walkStyleIndex == 0) return;
+			const auto& style = kCloneWalkStyles[walkStyleIndex];
+			if (style.Archetype && *style.Archetype) PED::_SET_PED_DESIRED_LOCO_FOR_MODEL(clone, style.Archetype);
+			if (style.MotionType && *style.MotionType) PED::_SET_PED_DESIRED_LOCO_MOTION_TYPE(clone, style.MotionType);
+		}
 		int GetPlayerMountHandle() { auto mount = Self::GetMount(); return mount.IsValid() ? mount.GetHandle() : 0; }
 		bool IsValidNpcTarget(int candidate, int clone, int owner)
 		{
@@ -330,11 +357,11 @@ namespace YimMenu::Submenus
 			}
 			return IsValidNpcTarget(best, clone, owner) ? best : 0;
 		}
-		int FindBodyguardThreat(int clone, int owner)
+		int FindBodyguardThreat(int clone, int owner, float radius)
 		{
 			if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner)) return 0;
 			const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
-			int best{}; float bestDistanceSq = kGuardRadius * kGuardRadius;
+			int best{}; float bestDistanceSq = radius * radius;
 			for (const auto& managed : g_ManagedClones)
 			{
 				if (!managed.Ped || managed.Ped == clone || managed.Mode != CloneMode::AttackOwner || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped)) continue;
@@ -480,10 +507,12 @@ namespace YimMenu::Submenus
 			TASK::CLEAR_PED_TASKS(mourner, true, false); FaceEntity(mourner, deadClone); PlayFullBodyEmote(mourner, ManualCloneEmotes::kMourningEmote);
 		}
 
-		void ConfigureCloneCombat(int clone, CloneMode mode, std::string_view weaponName)
+		void ConfigureCloneCombat(int clone, CloneMode mode, std::string_view weaponName, float seeingRange)
 		{
+			seeingRange = std::clamp(seeingRange, 20.0f, 500.0f);
+			const float hearingRange = std::clamp(seeingRange * 0.75f, 30.0f, 350.0f);
 			PED::SET_PED_KEEP_TASK(clone, true); PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, mode == CloneMode::Bodyguard);
-			PED::SET_PED_COMBAT_ABILITY(clone, 2); PED::SET_PED_ACCURACY(clone, AccuracyForWeapon(weaponName)); PED::SET_PED_SEEING_RANGE(clone, 220.0f); PED::SET_PED_HEARING_RANGE(clone, 180.0f);
+			PED::SET_PED_COMBAT_ABILITY(clone, 2); PED::SET_PED_ACCURACY(clone, AccuracyForWeapon(weaponName)); PED::SET_PED_SEEING_RANGE(clone, seeingRange); PED::SET_PED_HEARING_RANGE(clone, hearingRange);
 			for (int attr : {0, 5, 21, 23, 24, 46, 50, 58}) PED::SET_PED_COMBAT_ATTRIBUTES(clone, attr, true);
 			PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, false);
 			if (mode == CloneMode::Bodyguard) PED::SET_PED_AS_GROUP_MEMBER(clone, PLAYER::GET_PLAYER_GROUP(PLAYER::PLAYER_ID()));
@@ -555,6 +584,8 @@ namespace YimMenu::Submenus
 		{
 			int currentTarget{}, issuedTarget{}, lastHealth = ENTITY::GET_ENTITY_HEALTH(clone);
 			bool sawIncapacitation{}, insultedOnBetrayal{}, smoking{}, frenzyRoaming{}, followIssued{};
+			const float sightRange = std::clamp(options.SeeingRange, 20.0f, 500.0f);
+			const float targetLeashRadius = std::max(35.0f, sightRange * 1.20f);
 			auto nextDecision = Clock::now(), nextSocial = Clock::now() + 3s, nextIdleEmote = Clock::now() + 18s, nextHorse = Clock::now(), nextFollow = Clock::now(), nextRoam = Clock::now(), nextWeaponAudit = Clock::now(), idleSince = Clock::now();
 			while (clone && ENTITY::DOES_ENTITY_EXIST(clone))
 			{
@@ -605,14 +636,14 @@ namespace YimMenu::Submenus
 				if (now >= nextDecision)
 				{
 					const bool targetWasPresent = currentTarget != 0;
-					bool keepCurrent = currentTarget && ENTITY::DOES_ENTITY_EXIST(currentTarget) && !ENTITY::IS_ENTITY_DEAD(currentTarget) && IsWithinRange(clone, currentTarget, kTargetLeashRadius);
+					bool keepCurrent = currentTarget && ENTITY::DOES_ENTITY_EXIST(currentTarget) && !ENTITY::IS_ENTITY_DEAD(currentTarget) && IsWithinRange(clone, currentTarget, targetLeashRadius);
 					if (effectiveMode == CloneMode::Bodyguard && keepCurrent && !IsHostileManagedCloneForOwner(currentTarget)) keepCurrent = IsValidNpcTarget(currentTarget, clone, owner) && (PED::IS_PED_IN_COMBAT(currentTarget, owner) || PED::IS_PED_IN_COMBAT(owner, currentTarget) || ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(owner, currentTarget, true, true));
 					else if (effectiveMode == CloneMode::FrenzyNpcs && keepCurrent) keepCurrent = IsValidNpcTarget(currentTarget, clone, owner);
 					else if (effectiveMode == CloneMode::AttackOwner && keepCurrent) keepCurrent = currentTarget == owner;
 					if (!keepCurrent)
 					{
 						if (targetWasPresent && issuedTarget) TASK::CLEAR_PED_TASKS(clone, true, false);
-						currentTarget = effectiveMode == CloneMode::AttackOwner ? owner : (effectiveMode == CloneMode::Bodyguard ? FindBodyguardThreat(clone, owner) : FindNearestNpcTarget(clone, owner, kFrenzySearchRadius));
+						currentTarget = effectiveMode == CloneMode::AttackOwner ? owner : (effectiveMode == CloneMode::Bodyguard ? FindBodyguardThreat(clone, owner, sightRange) : FindNearestNpcTarget(clone, owner, sightRange));
 						issuedTarget = 0;
 						followIssued = false;
 					}
@@ -678,17 +709,20 @@ namespace YimMenu::Submenus
 			if (ActiveCloneCount() >= kMaxActiveClones) { PruneManagedClones(true); if (ActiveCloneCount() >= kMaxActiveClones) { Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Já existem 8 clones vivos. Apague ou mate algum antes de criar outro." : "There are already 8 living clones. Delete or kill one before creating another.", NotificationType::Warning, 2600); return; } }
 			auto self = Self::GetPed(); if (!self.IsValid() || self.GetHealth() <= 0) return;
 			const int owner = self.GetHandle(); if (options.SourcePlayerId < 0) options.SourcePlayerId = PLAYER::PLAYER_ID();
+			options.Health = std::clamp(options.Health, 50, 5000);
+			options.SeeingRange = std::clamp(options.SeeingRange, 20.0f, 500.0f);
+			options.WalkStyleIndex = std::clamp(options.WalkStyleIndex, 0, static_cast<int>(kCloneWalkStyles.size()) - 1);
 			const int sourcePed = ResolveSourcePed(options.SourcePlayerId);
 			if (!sourcePed) { Notifications::Show("Tenebris", Localization::IsPortuguese() ? "O jogador escolhido não está mais disponível na sessão." : "The selected player is no longer available in the session.", NotificationType::Warning, 2600); return; }
 			int clone = CreateCloneShell(options.SourcePlayerId, sourcePed, spawn, heading, options.Networked);
 			if (!clone) { Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Não foi possível criar o clone com segurança." : "Could not create the clone safely.", NotificationType::Warning, 2600); return; }
-			ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(clone, true); ENTITY::SET_ENTITY_MAX_HEALTH(clone, kCloneHealth); ENTITY::SET_ENTITY_HEALTH(clone, kCloneHealth, 0);
-			ApplyPlayerPromptName(clone, options.SourcePlayerId); ConfigureBleedout(clone); ConfigureCloneLoot(clone);
+			ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(clone, true); ENTITY::SET_ENTITY_MAX_HEALTH(clone, options.Health); ENTITY::SET_ENTITY_HEALTH(clone, options.Health, 0);
+			ApplyPlayerPromptName(clone, options.SourcePlayerId); ConfigureBleedout(clone); ConfigureCloneLoot(clone); ApplyCloneWalkStyle(clone, options.WalkStyleIndex);
 			options.WeaponIndex = std::clamp(options.WeaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
 			const Hash weapon = EquipCloneWeapon(clone, options.WeaponIndex);
 			ScriptMgr::Yield();
 			EnsureCloneWeaponEquipped(clone, weapon);
-			ConfigureCloneCombat(clone, options.Mode, kCloneWeapons[options.WeaponIndex].HashName); ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
+			ConfigureCloneCombat(clone, options.Mode, kCloneWeapons[options.WeaponIndex].HashName, options.SeeingRange); ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
 			g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode, options.Networked, {}}); g_NextPedCacheRefresh = {};
 			++g_TotalSpawned; if (g_TotalSpawned % 5 == 0) PruneManagedClones(true);
 			FiberPool::Push([clone, owner, options, weapon] { RunCloneBrain(clone, owner, options, weapon); });
@@ -749,8 +783,28 @@ namespace YimMenu::Submenus
 
 		class ManualCloneItem final : public UIItem
 		{
-			int m_WeaponIndex{}; CloneMode m_Mode{CloneMode::Bodyguard}; int m_SourcePlayerId{-1}; bool m_Networked{}; bool m_EmoteFlourish{true};
-			CloneOptions GetOptions() const { CloneOptions out{m_WeaponIndex, m_Mode, m_SourcePlayerId, m_Networked, m_EmoteFlourish}; if (out.SourcePlayerId < 0) out.SourcePlayerId = PLAYER::PLAYER_ID(); return out; }
+			int m_WeaponIndex{};
+			CloneMode m_Mode{CloneMode::Bodyguard};
+			int m_SourcePlayerId{-1};
+			bool m_Networked{};
+			bool m_EmoteFlourish{true};
+			int m_Health{800};
+			float m_SeeingRange{220.0f};
+			int m_WalkStyleIndex{};
+
+			CloneOptions GetOptions() const
+			{
+				CloneOptions out{};
+				out.WeaponIndex = m_WeaponIndex;
+				out.Mode = m_Mode;
+				out.SourcePlayerId = m_SourcePlayerId < 0 ? PLAYER::PLAYER_ID() : m_SourcePlayerId;
+				out.Networked = m_Networked;
+				out.EmoteFlourish = m_EmoteFlourish;
+				out.Health = m_Health;
+				out.SeeingRange = m_SeeingRange;
+				out.WalkStyleIndex = m_WalkStyleIndex;
+				return out;
+			}
 			std::string SourcePreview() const
 			{
 				const int id = m_SourcePlayerId < 0 ? PLAYER::PLAYER_ID() : m_SourcePlayerId; const char* name = PLAYER::GET_PLAYER_NAME(id);
@@ -770,8 +824,33 @@ namespace YimMenu::Submenus
 					for (int id = 0; id < 32; ++id) { if (id == localId || !NETWORK::NETWORK_IS_PLAYER_ACTIVE(id)) continue; const int ped = PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(id); const char* name = PLAYER::GET_PLAYER_NAME(id); if (ped && ENTITY::DOES_ENTITY_EXIST(ped) && name && *name && ImGui::Selectable(name, m_SourcePlayerId == id)) m_SourcePlayerId = id; }
 					ImGui::EndCombo();
 				}
+
+				ImGui::Spacing();
+				ImGui::SeparatorText(Localization::IsPortuguese() ? "ATRIBUTOS DO CLONE" : "CLONE ATTRIBUTES");
+				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Vida máxima" : "Maximum health");
+				ImGui::SetNextItemWidth(-1.0f);
+				ImGui::SliderInt("##CloneHealth", &m_Health, 50, 5000, "%d HP");
+				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Distância para enxergar/procurar inimigos" : "Enemy seeing/search range");
+				ImGui::SetNextItemWidth(-1.0f);
+				ImGui::SliderFloat("##CloneSeeingRange", &m_SeeingRange, 20.0f, 500.0f, "%.0f m");
+
+				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Estilo de andar" : "Walk style");
+				const char* walkPreview = Localization::IsPortuguese() ? kCloneWalkStyles[m_WalkStyleIndex].LabelPt : kCloneWalkStyles[m_WalkStyleIndex].LabelEn;
+				ImGui::SetNextItemWidth(-1.0f);
+				if (ImGui::BeginCombo("##CloneWalkStyle", walkPreview))
+				{
+					for (int i = 0; i < static_cast<int>(kCloneWalkStyles.size()); ++i)
+					{
+						const char* label = Localization::IsPortuguese() ? kCloneWalkStyles[i].LabelPt : kCloneWalkStyles[i].LabelEn;
+						if (ImGui::Selectable(label, m_WalkStyleIndex == i)) m_WalkStyleIndex = i;
+					}
+					ImGui::EndCombo();
+				}
+
 				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Arma (Red Dead Online)" : "Weapon (Red Dead Online)"); const char* weaponPreview = Localization::IsPortuguese() ? kCloneWeapons[m_WeaponIndex].LabelPt : kCloneWeapons[m_WeaponIndex].LabelEn; ImGui::SetNextItemWidth(-1.0f);
 				if (ImGui::BeginCombo("##ManualCloneWeapon", weaponPreview)) { for (int i = 0; i < static_cast<int>(kCloneWeapons.size()); ++i) { const char* label = Localization::IsPortuguese() ? kCloneWeapons[i].LabelPt : kCloneWeapons[i].LabelEn; if (ImGui::Selectable(label, m_WeaponIndex == i)) m_WeaponIndex = i; } ImGui::EndCombo(); }
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "O alcance acima controla tanto a visão nativa do ped quanto a busca de alvo da IA do Tenebris." : "The range above controls both native ped sight and Tenebris target scanning.");
+
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "COMPORTAMENTO" : "BEHAVIOR"); const char* modePreview = Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); ImGui::SetNextItemWidth(-1.0f);
 				if (ImGui::BeginCombo("##CloneBehavior", modePreview)) { for (int i = 0; i < 3; ++i) { const auto mode = static_cast<CloneMode>(i); const char* label = Localization::IsPortuguese() ? ModeLabelPt(mode) : ModeLabelEn(mode); if (ImGui::Selectable(label, m_Mode == mode)) m_Mode = mode; } ImGui::EndCombo(); }
 				ImGui::Checkbox(Localization::IsPortuguese() ? "Floreio de emote (10 s)" : "Emote flourish (10 s)", &m_EmoteFlourish);
@@ -787,7 +866,7 @@ namespace YimMenu::Submenus
 					FiberPool::Push([options] { RunSessionCloneBrawl(options); });
 				}
 				ImGui::TextWrapped("%s", Localization::IsPortuguese() ? "Cria 1 clone por jogador ativo em duas fileiras, com spawn escalonado para reduzir travadas. Após 10 s, os dois grupos brigam usando a IA nativa. Sobreviventes pegam cavalo se houver, seguem para Armadillo ou Saint Denis e atacam NPCs humanos da cidade." : "Creates 1 clone per active player in two lines, with staggered spawning to reduce hitches. After 10 s, both groups fight with stock AI. Survivors use nearby horses, head to Armadillo or Saint Denis and attack human NPCs in the city.");
-				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "O duelo inicial é desarmado para preservar os 800 HP e evitar mortes instantâneas. A arma escolhida acima é equipada na expedição. 40% dos sobreviventes dormem 15 s uma única vez no caminho." : "The opening brawl is unarmed to preserve the 800 HP fights and avoid instant kills. The weapon selected above is equipped for the expedition. 40% of survivors sleep once for 15 seconds on the way.");
+				ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "O evento de batalha mantém seus próprios 800 HP e configuração de sniper; os atributos acima são usados pelos clones manuais e pela freecam." : "The brawl event keeps its own 800 HP/sniper setup; the attributes above apply to manual/freecam clones.");
 				if (g_SessionBrawlRunning) ImGui::TextDisabled("%s", Localization::IsPortuguese() ? "Evento em andamento — APAGAR TODOS OS CLONES também cancela o controlador do evento." : "Event running — DELETE ALL CLONES also cancels the event controller.");
 
 				ImGui::Spacing(); ImGui::SeparatorText(Localization::IsPortuguese() ? "POSIÇÃO / LIMPEZA" : "POSITION / CLEANUP");
@@ -798,9 +877,9 @@ namespace YimMenu::Submenus
 			}
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "Criar meu clone" : "Create my clone"; }
 			std::string GetMenuValue() const override { return Localization::IsPortuguese() ? ModeLabelPt(m_Mode) : ModeLabelEn(m_Mode); }
-			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clones seus ou da sessão com IA nativa, guarda-costas, batalha coletiva, expedição, multi-spawn, loot e emotes." : "Clones of you or session players with stock AI, bodyguards, session brawl, expedition, multi-spawn, loot and emotes."; }
+			std::string_view GetMenuDescription() const override { return Localization::IsPortuguese() ? "Clone configurável: vida, arma, visão, estilo de andar, IA, multi-spawn, loot e emotes." : "Configurable clone: health, weapon, sight, walk style, AI, multi-spawn, loot and emotes."; }
 			bool RequiresImGuiEditor() const override { return true; }
-			float GetPreferredEditorHeight() const override { return 1010.0f; }
+			float GetPreferredEditorHeight() const override { return 1160.0f; }
 		};
 	}
 	std::shared_ptr<UIItem> CreateManualCloneItem() { return std::make_shared<ManualCloneItem>(); }
