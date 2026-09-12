@@ -5,16 +5,6 @@
 
 namespace YimMenu
 {
-	static constexpr const char* kTenebrisBanner = R"TENEBRIS(
-===============================================================================
- TTTTTTT  EEEEEEE  N     N  EEEEEEE  BBBBBB   RRRRRR   IIIIIII   SSSSSS
-    T     E        NN    N  E        B     B  R     R     I     S
-    T     EEEEE    N N   N  EEEEE    BBBBBB   RRRRRR      I      SSSSS
-    T     E        N  N  N  E        B     B  R   R       I           S
-    T     EEEEEEE  N   N N  EEEEEEE  BBBBBB   R    RR  IIIIIII  SSSSSS
-===============================================================================
-)TENEBRIS";
-
 	template<typename TP>
 	static std::time_t to_time_t(TP tp)
 	{
@@ -79,12 +69,6 @@ namespace YimMenu
 
 		AttemptCreateBackup();
 		OpenOutputStreams();
-
-		if (m_AttachConsole)
-		{
-			m_ConsoleOut << "\x1b[1;92m" << kTenebrisBanner << "\x1b[0m\n";
-			m_ConsoleOut.flush();
-		}
 
 		Logger::Init();
 		Logger::AddSink([this](LogMessagePtr msg) {
