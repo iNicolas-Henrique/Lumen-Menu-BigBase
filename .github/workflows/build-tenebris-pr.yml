@@ -43,8 +43,8 @@ jobs:
           }
           if (-not (Test-Path "Tenebris")) { throw "Diretorio Tenebris ausente." }
           if (Test-Path "Tenebris.dll") { throw "DLL antiga rastreada na raiz ainda existe." }
-          if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "T E N E B R I S" -Quiet)) {
-            throw "Logo TENEBRIS do console ausente."
+          if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "_______ ______ _   _ ______" -SimpleMatch -Quiet)) {
+            throw "Logo grande TENEBRIS do console ausente."
           }
           # O cabecalho grafico agora desenha as letras individualmente para permitir
           # a animacao organica por glifo, por isso a verificacao usa a marca sem espacos.
