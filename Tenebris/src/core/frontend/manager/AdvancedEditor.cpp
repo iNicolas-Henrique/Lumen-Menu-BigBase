@@ -26,6 +26,7 @@ namespace YimMenu
 		ImVec2 g_EditorSize{};
 		bool g_HasEditorSize{};
 		bool g_ApplyEditorSize{true};
+		bool g_DetachedMode{};
 
 		float SmoothStep(float value)
 		{
@@ -41,6 +42,7 @@ namespace YimMenu
 			g_Phase = TransitionPhase::Closed;
 			g_EditorAlpha = 0.0f;
 			g_SlideProgress = 0.0f;
+			g_DetachedMode = false;
 		}
 	}
 
@@ -108,12 +110,45 @@ namespace YimMenu
 		g_EditorSize = {};
 		g_HasEditorSize = false;
 		g_ApplyEditorSize = true;
+		g_DetachedMode = false;
+	}
+
+	void AdvancedEditor::SetDetachedMode(bool detached)
+	{
+		if (g_DetachedMode == detached)
+			return;
+		g_DetachedMode = detached;
+		g_ApplyEditorSize = true;
+		if (detached)
+		{
+			g_Phase = TransitionPhase::Open;
+			g_EditorAlpha = 1.0f;
+			g_SlideProgress = 1.0f;
+		}
+	}
+
+	bool AdvancedEditor::IsDetachedMode()
+	{
+		return g_DetachedMode;
+	}
+
+	bool AdvancedEditor::ShouldRenderWhenMenuClosed()
+	{
+		return g_DetachedMode && g_Item != nullptr;
 	}
 
 	void AdvancedEditor::Tick()
 	{
 		if (!g_Item)
 			return;
+
+		if (g_DetachedMode)
+		{
+			g_Phase = TransitionPhase::Open;
+			g_EditorAlpha = 1.0f;
+			g_SlideProgress = 1.0f;
+			return;
+		}
 
 		if (!PerformanceOptions::EditorAnimations.GetState())
 		{
@@ -162,7 +197,7 @@ namespace YimMenu
 			return false;
 		if (g_Phase == TransitionPhase::Closing)
 			return true;
-		if (key == VK_BACK || key == VK_ESCAPE)
+		if (!g_DetachedMode && (key == VK_BACK || key == VK_ESCAPE))
 		{
 			Close();
 			return true;
@@ -186,27 +221,45 @@ namespace YimMenu
 		const auto classicLayout = GetResponsiveMenuLayout();
 		(void)classicLayout;
 
-		const float defaultWidth = std::clamp(display.x * 0.84f, 650.0f, display.x - gap * 2.0f);
-		const float maxHeight = std::max(280.0f, display.y - gap * 2.0f);
-		const float requestedHeight = std::max(g_Item->GetPreferredEditorHeight(), display.y * 0.78f);
-		const float defaultHeight = std::clamp(requestedHeight, 420.0f, maxHeight);
-		const float centeredX = origin.x + (display.x - defaultWidth) * 0.5f;
-		const float offscreenX = origin.x + display.x + gap;
-		const float slide = PerformanceOptions::EditorAnimations.GetState() ? SmoothStep(g_SlideProgress) : 1.0f;
-		const float editorX = offscreenX + (centeredX - offscreenX) * slide;
-		const ImVec2 defaultSize(defaultWidth, defaultHeight);
-		const ImVec2 editorPosition(editorX, origin.y + (display.y - defaultHeight) * 0.5f);
-		const float alpha = GetEditorAlpha();
+		float defaultWidth{};
+		float defaultHeight{};
+		ImVec2 editorPosition{};
+		if (g_DetachedMode)
+		{
+			// Freecam mode: compact right-side workspace. At 1280x720 this is
+			// roughly 430-460 px wide, leaving most of the world visible.
+			defaultWidth = std::clamp(display.x * 0.355f, 360.0f, 470.0f);
+			defaultHeight = std::max(360.0f, display.y - gap * 2.0f);
+			editorPosition = ImVec2(origin.x + display.x - defaultWidth - gap, origin.y + gap);
+		}
+		else
+		{
+			defaultWidth = std::clamp(display.x * 0.84f, 650.0f, display.x - gap * 2.0f);
+			const float maxHeight = std::max(280.0f, display.y - gap * 2.0f);
+			const float requestedHeight = std::max(g_Item->GetPreferredEditorHeight(), display.y * 0.78f);
+			defaultHeight = std::clamp(requestedHeight, 420.0f, maxHeight);
+			const float centeredX = origin.x + (display.x - defaultWidth) * 0.5f;
+			const float offscreenX = origin.x + display.x + gap;
+			const float slide = PerformanceOptions::EditorAnimations.GetState() ? SmoothStep(g_SlideProgress) : 1.0f;
+			const float editorX = offscreenX + (centeredX - offscreenX) * slide;
+			editorPosition = ImVec2(editorX, origin.y + (display.y - defaultHeight) * 0.5f);
+		}
 
-		if (g_Phase != TransitionPhase::Open)
+		const ImVec2 defaultSize(defaultWidth, defaultHeight);
+		const float alpha = GetEditorAlpha();
+		if (g_DetachedMode || g_Phase != TransitionPhase::Open)
 			ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
-		if (g_ApplyEditorSize)
-			ImGui::SetNextWindowSize(g_HasEditorSize ? g_EditorSize : defaultSize, ImGuiCond_Always);
-		ImGui::SetNextWindowSizeConstraints(ImVec2(620.0f, 400.0f), ImVec2(display.x - gap * 2.0f, maxHeight));
+		if (g_DetachedMode || g_ApplyEditorSize)
+			ImGui::SetNextWindowSize(g_DetachedMode ? defaultSize : (g_HasEditorSize ? g_EditorSize : defaultSize), ImGuiCond_Always);
+
+		const float maxHeight = std::max(280.0f, display.y - gap * 2.0f);
+		ImGui::SetNextWindowSizeConstraints(
+			g_DetachedMode ? ImVec2(340.0f, 340.0f) : ImVec2(620.0f, 400.0f),
+			ImVec2(display.x - gap * 2.0f, maxHeight));
 		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, g_DetachedMode ? ImVec2(12.0f, 10.0f) : ImVec2(16.0f, 12.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 7.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(9.0f, 6.0f));
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.97f));
@@ -220,18 +273,33 @@ namespace YimMenu
 			ImGui::SetWindowFontScale(1.0f);
 
 			const char* brand = "TENEBRIS";
-			const float brandWidth = ImGui::CalcTextSize(brand).x;
-			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (ImGui::GetWindowWidth() - brandWidth) * 0.5f));
-			ImGui::TextUnformatted(brand);
+			if (g_DetachedMode)
+			{
+				// Keep all labels and controls anchored to the left edge in the
+				// narrow freecam panel so nothing is pushed off-screen.
+				ImGui::TextUnformatted(brand);
+				ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
+				ImGui::TextDisabled("FREECAM");
+			}
+			else
+			{
+				const float brandWidth = ImGui::CalcTextSize(brand).x;
+				ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (ImGui::GetWindowWidth() - brandWidth) * 0.5f));
+				ImGui::TextUnformatted(brand);
+				ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
+				if (ImGui::SmallButton("X"))
+					open = false;
+			}
 
-			ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
-			if (ImGui::SmallButton("X"))
-				open = false;
-
-			const std::string subtitle = std::string(g_Item->GetMenuLabel()) + " | BACK: Voltar";
-			const float subtitleWidth = ImGui::CalcTextSize(subtitle.c_str()).x;
-			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (ImGui::GetWindowWidth() - subtitleWidth) * 0.5f));
-			ImGui::TextDisabled("%s", subtitle.c_str());
+			const std::string subtitle = std::string(g_Item->GetMenuLabel()) + (g_DetachedMode ? " | Mouse: editar | BACK: sair da Freecam" : " | BACK: Voltar");
+			if (g_DetachedMode)
+				ImGui::TextDisabled("%s", subtitle.c_str());
+			else
+			{
+				const float subtitleWidth = ImGui::CalcTextSize(subtitle.c_str()).x;
+				ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), (ImGui::GetWindowWidth() - subtitleWidth) * 0.5f));
+				ImGui::TextDisabled("%s", subtitle.c_str());
+			}
 			ImGui::Separator();
 			ImGui::Spacing();
 
@@ -247,7 +315,7 @@ namespace YimMenu
 		ImGui::PopStyleColor(3);
 		ImGui::PopStyleVar(6);
 
-		if (!open)
+		if (!open && !g_DetachedMode)
 			Close();
 	}
 
@@ -258,11 +326,13 @@ namespace YimMenu
 
 	float AdvancedEditor::GetEditorAlpha()
 	{
+		if (g_DetachedMode)
+			return 1.0f;
 		return PerformanceOptions::EditorAnimations.GetState() ? SmoothStep(g_EditorAlpha) : g_EditorAlpha;
 	}
 
 	float AdvancedEditor::GetClassicMenuAlpha()
 	{
-		return 1.0f - GetEditorAlpha();
+		return g_DetachedMode ? 0.0f : 1.0f - GetEditorAlpha();
 	}
 }
