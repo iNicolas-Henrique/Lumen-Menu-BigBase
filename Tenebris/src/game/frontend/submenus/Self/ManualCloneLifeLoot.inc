@@ -129,10 +129,9 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
         return;
 
     const Hash ammoHash = RareLootAmmoHash(ammoVariant);
-    // Normal corpse loot can collapse to tiny pickups (for example six rounds).
-    // This uses the same proven fill path as the project's GiveAllAmmo feature;
-    // RDR2 clamps the result to the player's capacity for the selected ammo type.
-    WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, 9999, 0x2CD419DC);
+    // The old six-round result was the game's normal corpse pickup. This custom
+    // package now fires reliably and explicitly adds the requested 100 rounds.
+    WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, kRareLootAmmoAmount, 0x2CD419DC);
 
     const Rewards::RewardInfo miracleTonic{0, "CONSUMABLE_TONIC"_J, "Miracle Tonic"};
     for (int i = 0; i < tonicCount; ++i)
@@ -142,7 +141,7 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
             ScriptMgr::Yield(1ms);
     }
 
-    std::string message = "Saque raro: pacote 100x ";
+    std::string message = "Saque raro: 100x ";
     message += RareLootAmmoNamePt(ammoVariant);
     message += " + ";
     message += std::to_string(tonicCount);
