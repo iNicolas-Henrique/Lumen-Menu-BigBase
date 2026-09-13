@@ -301,8 +301,29 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             {
                 if (state.LastHorseAppearance != support.Horse)
                 {
+                    // MetaPed horses can exist and even accept a rider before their
+                    // drawable variation is finalized. Force the variation once per
+                    // assigned horse, then explicitly restore visibility/alpha.
                     PED::_SET_RANDOM_OUTFIT_VARIATION(support.Horse, true);
+                    PED::_UPDATE_PED_VARIATION(support.Horse, false, true, true, true, false);
+                    ENTITY::SET_ENTITY_VISIBLE(support.Horse, true);
+                    ENTITY::SET_ENTITY_ALPHA(support.Horse, 255, false);
+                    ENTITY::SET_ENTITY_COLLISION(support.Horse, true, true);
                     ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(support.Horse, true);
+
+                    // Dedicated horses used by a networked clone should not remain
+                    // local-only just because the fallback horse spawner was local.
+                    if (managed.Networked)
+                    {
+                        if (!NETWORK::NETWORK_GET_ENTITY_IS_NETWORKED(support.Horse))
+                            NETWORK::NETWORK_REGISTER_ENTITY_AS_NETWORKED(support.Horse);
+                        if (NETWORK::NETWORK_GET_ENTITY_IS_NETWORKED(support.Horse))
+                        {
+                            const int netId = NETWORK::NETWORK_GET_NETWORK_ID_FROM_ENTITY(support.Horse);
+                            if (netId)
+                                NETWORK::SET_NETWORK_ID_EXISTS_ON_ALL_MACHINES(netId, true);
+                        }
+                    }
                     state.LastHorseAppearance = support.Horse;
                 }
                 EnsureSupportHorseVisible(support.Horse);
