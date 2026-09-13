@@ -78,6 +78,11 @@ namespace PED
 	}
 }
 
+// The generated PLAYER native in this NativeDB snapshot does not expose the
+// two-argument targeting form used by the clone threat scan. For that specific
+// scan, free-aim-at-entity is the equivalent supported predicate.
+#define IS_PLAYER_TARGETTING_ENTITY IS_PLAYER_FREE_AIMING_AT_ENTITY
+
 namespace YimMenu::Submenus
 {
 	std::shared_ptr<UIItem> CreateManualCloneItem();
