@@ -10,7 +10,7 @@
 
 namespace YimMenu::Features
 {
-	BoolCommand _UnlimitedItems{"unlimiteditems", "Unlimited Items", "Never run out of items in your inventory!"};
+	BoolCommand _UnlimitedItems{"unlimiteditems", "Itens ilimitados", "Impede o consumo de itens ao bloquear a mensagem de uso enviada ao servidor enquanto a opção estiver ativada."};
 	BoolCommand _LogServerMessages{"logservermessages", "Log Server Messages", "Log Server Messages"};
 }
 

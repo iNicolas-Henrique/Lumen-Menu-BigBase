@@ -14,10 +14,7 @@ namespace YimMenu
 	void CommandItem::Draw()
 	{
 		if (!m_Command)
-		{
-			ImGui::Text("Unknown!");
 			return;
-		}
 
 		if (ImGui::Button(m_LabelOverride.has_value() ? m_LabelOverride.value().data() : m_Command->GetLabel().data()))
 		{
@@ -27,7 +24,6 @@ namespace YimMenu
 		}
 
 		// TODO: refactor this
-
 		auto windowLabel = std::format("{} Hotkey", m_Command->GetLabel());
 
 		if (ImGui::IsItemHovered())
@@ -46,7 +42,6 @@ namespace YimMenu
 
 			HotkeySetter(m_Command->GetHash()).Draw();
 
-
 			ImGui::Spacing();
 			if (ImGui::Button("Close") || ((!ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered()) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
 				ImGui::CloseCurrentPopup();
@@ -57,17 +52,26 @@ namespace YimMenu
 
 	std::string_view CommandItem::GetMenuLabel() const
 	{
+		if (!m_Command)
+			return {};
 		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
 	}
+
 	std::string_view CommandItem::GetMenuDescription() const
 	{
 		return m_Command ? m_Command->GetDescription() : std::string_view{};
 	}
+
 	void CommandItem::HandleMenuAction(MenuAction action)
 	{
 		if (m_Command && action == MenuAction::Enter)
 			FiberPool::Push([this] {
 				m_Command->Call();
 			});
+	}
+
+	bool CommandItem::IsVisible() const
+	{
+		return m_Command != nullptr;
 	}
 }

@@ -2,8 +2,8 @@
 
 namespace YimMenu
 {
-	static inline float m_CardSizeX          = 350.f;
-	static inline float m_CardSizeY          = 100.f;
+	static inline float m_CardSizeX = 350.f;
+	static inline float m_CardSizeY = 100.f;
 	static inline float m_CardAnimationSpeed = 50.f;
 
 	enum class NotificationType
@@ -14,9 +14,17 @@ namespace YimMenu
 		Error
 	};
 
+	enum class NotificationPlacement
+	{
+		Left,
+		TopCenter,
+		Right
+	};
+
 	struct Notification
 	{
 		NotificationType m_Type;
+		NotificationPlacement m_Placement = NotificationPlacement::Left;
 		std::string m_Title;
 		std::string m_Message;
 		std::chrono::time_point<std::chrono::system_clock> m_CreatedOn;
@@ -24,6 +32,7 @@ namespace YimMenu
 		std::function<void()> m_ContextFunc;
 		std::string m_ContextFuncName;
 		float m_AnimationOffset = -m_CardSizeX;
+		float m_Alpha = 0.0f;
 		bool m_Erasing = false;
 		std::uint32_t m_Identifier;
 	};
@@ -34,8 +43,13 @@ namespace YimMenu
 		std::unordered_map<std::string, Notification> m_Notifications = {};
 		std::mutex m_mutex;
 
-		// duration is in milliseconds
-		Notification ShowImpl(std::string title, std::string message, NotificationType type, int duration, std::function<void()> context_function, std::string context_function_name);
+		Notification ShowImpl(std::string title,
+		    std::string message,
+		    NotificationType type,
+		    int duration,
+		    std::function<void()> context_function,
+		    std::string context_function_name,
+		    NotificationPlacement placement);
 		void DrawImpl();
 		bool EraseImpl(Notification notification);
 
@@ -46,9 +60,15 @@ namespace YimMenu
 		}
 
 	public:
-		static Notification Show(std::string title, std::string message, NotificationType type = NotificationType::Info, int duration = 5000, std::function<void()> context_function = nullptr, std::string context_function_name = "")
+		static Notification Show(std::string title,
+		    std::string message,
+		    NotificationType type = NotificationType::Info,
+		    int duration = 5000,
+		    std::function<void()> context_function = nullptr,
+		    std::string context_function_name = "",
+		    NotificationPlacement placement = NotificationPlacement::Left)
 		{
-			return GetInstance().ShowImpl(title, message, type, duration, context_function, context_function_name);
+			return GetInstance().ShowImpl(title, message, type, duration, context_function, context_function_name, placement);
 		}
 
 		static void Draw()
@@ -61,5 +81,4 @@ namespace YimMenu
 			return GetInstance().EraseImpl(notification);
 		}
 	};
-
 }
