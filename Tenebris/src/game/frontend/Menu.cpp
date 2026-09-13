@@ -95,7 +95,10 @@ namespace YimMenu
 
 		Renderer::AddRendererCallBack(
 		    [] {
-			    if (!GUI::IsOpen())
+			    // Clone multi-spawn freecam intentionally closes only the classic
+			    // menu while keeping the advanced editor alive on the right side.
+			    // Do not destroy that editor just because GUI::IsOpen() is false.
+			    if (!GUI::IsOpen() && !AdvancedEditor::ShouldRenderWhenMenuClosed())
 			    {
 				    AdvancedEditor::CloseImmediate();
 				    return;
