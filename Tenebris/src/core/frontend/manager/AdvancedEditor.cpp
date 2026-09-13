@@ -27,6 +27,7 @@ namespace YimMenu
 		bool g_HasEditorSize{};
 		bool g_ApplyEditorSize{true};
 		bool g_DetachedMode{};
+		bool g_DetachedPlacementPending{true};
 
 		float SmoothStep(float value)
 		{
@@ -43,6 +44,7 @@ namespace YimMenu
 			g_EditorAlpha = 0.0f;
 			g_SlideProgress = 0.0f;
 			g_DetachedMode = false;
+			g_DetachedPlacementPending = true;
 		}
 	}
 
@@ -111,6 +113,7 @@ namespace YimMenu
 		g_HasEditorSize = false;
 		g_ApplyEditorSize = true;
 		g_DetachedMode = false;
+		g_DetachedPlacementPending = true;
 	}
 
 	void AdvancedEditor::SetDetachedMode(bool detached)
@@ -119,6 +122,7 @@ namespace YimMenu
 			return;
 		g_DetachedMode = detached;
 		g_ApplyEditorSize = true;
+		g_DetachedPlacementPending = detached;
 		if (detached)
 		{
 			g_Phase = TransitionPhase::Open;
@@ -247,7 +251,7 @@ namespace YimMenu
 
 		const ImVec2 defaultSize(defaultWidth, defaultHeight);
 		const float alpha = GetEditorAlpha();
-		if (g_DetachedMode || g_Phase != TransitionPhase::Open)
+		if ((g_DetachedMode && g_DetachedPlacementPending) || (!g_DetachedMode && g_Phase != TransitionPhase::Open))
 			ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
 		if (g_DetachedMode || g_ApplyEditorSize)
 			ImGui::SetNextWindowSize(g_DetachedMode ? defaultSize : (g_HasEditorSize ? g_EditorSize : defaultSize), ImGuiCond_Always);
@@ -265,11 +269,31 @@ namespace YimMenu
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.025f, 0.04f, 0.02f, 0.97f));
 		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.30f, 0.055f, 1.0f));
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.13f, 0.19f, 0.043f, 1.0f));
-		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings))
+		ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
+		if (!g_DetachedMode)
+			windowFlags |= ImGuiWindowFlags_NoMove;
+		if (ImGui::Begin("##TenebrisAdvancedEditor", nullptr, windowFlags))
 		{
 			g_EditorSize = ImGui::GetWindowSize();
 			g_HasEditorSize = true;
 			g_ApplyEditorSize = false;
+
+			if (g_DetachedMode)
+			{
+				// Freecam panel is movable, but never allowed to disappear outside
+				// the active viewport. Initial placement remains docked at the right.
+				const ImVec2 currentPos = ImGui::GetWindowPos();
+				const ImVec2 currentSize = ImGui::GetWindowSize();
+				const float minX = origin.x;
+				const float minY = origin.y;
+				const float maxX = std::max(minX, origin.x + display.x - currentSize.x);
+				const float maxY = std::max(minY, origin.y + display.y - currentSize.y);
+				const ImVec2 clamped(std::clamp(currentPos.x, minX, maxX), std::clamp(currentPos.y, minY, maxY));
+				if (clamped.x != currentPos.x || clamped.y != currentPos.y)
+					ImGui::SetWindowPos(clamped, ImGuiCond_Always);
+				g_DetachedPlacementPending = false;
+			}
+
 			ImGui::SetWindowFontScale(1.0f);
 
 			const char* brand = "TENEBRIS";
@@ -278,7 +302,7 @@ namespace YimMenu
 				// Keep all labels and controls anchored to the left edge in the
 				// narrow freecam panel so nothing is pushed off-screen.
 				ImGui::TextUnformatted(brand);
-				ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("X").x - 8.0f);
+				ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("FREECAM").x - 8.0f);
 				ImGui::TextDisabled("FREECAM");
 			}
 			else
@@ -291,7 +315,7 @@ namespace YimMenu
 					open = false;
 			}
 
-			const std::string subtitle = std::string(g_Item->GetMenuLabel()) + (g_DetachedMode ? " | Mouse: editar | BACK: sair da Freecam" : " | BACK: Voltar");
+			const std::string subtitle = std::string(g_Item->GetMenuLabel()) + (g_DetachedMode ? " | Arraste o painel | Mouse: editar | BACK: sair" : " | BACK: Voltar");
 			if (g_DetachedMode)
 				ImGui::TextDisabled("%s", subtitle.c_str());
 			else
