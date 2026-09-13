@@ -57,6 +57,8 @@ std::array<AggressivePerceptionState, kMaxActiveClones> g_AggressivePerception{}
 std::array<CloneSupportState, kMaxActiveClones> g_CloneSupport{};
 BodyguardThreatCache g_BodyguardThreatCache{};
 
+void DeleteSupportHorse(CloneSupportState& state);
+
 bool IsLawPed(int ped)
 {
 	if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped) || ENTITY::IS_ENTITY_DEAD(ped) || !PED::IS_PED_HUMAN(ped))
@@ -75,8 +77,6 @@ bool IsAnyLiveHumanPedTarget(int candidate, int clone)
 {
 	if (!candidate || candidate == clone || !ENTITY::DOES_ENTITY_EXIST(candidate) || ENTITY::IS_ENTITY_DEAD(candidate) || !PED::IS_PED_HUMAN(candidate))
 		return false;
-	// Hostile Tenebris clones are a squad. They never select one another as a
-	// combat target, while bodyguards may still defend the owner from hostile clones.
 	if (IsHostileCloneAlly(clone, candidate))
 		return false;
 	return true;
