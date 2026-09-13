@@ -133,7 +133,6 @@ namespace YimMenu::Features
 			auto& io = ImGui::GetIO();
 			const bool uiVisible = GUI::IsOpen() || AdvancedEditor::ShouldRenderWhenMenuClosed();
 			const bool uiOwnsMouse = uiVisible && io.WantCaptureMouse;
-			const bool uiOwnsKeyboard = uiVisible && io.WantCaptureKeyboard;
 			const bool uiEditingKeyboard = uiVisible && (io.WantTextInput || (io.WantCaptureKeyboard && ImGui::IsAnyItemActive()));
 
 			// Game controls stay disabled while freecam owns the player. Look input
@@ -170,12 +169,12 @@ namespace YimMenu::Features
 			Self::GetPed().SetVisible(false);
 
 			// ENTER keeps its original teleport behavior, but never fires while an
-			// ImGui control owns the keyboard. BACK exits detached freecam cleanly,
-			// preventing the right-side editor from trapping the user in this mode.
-			if (!uiOwnsKeyboard && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, (Hash)NativeInputs::INPUT_FRONTEND_ACCEPT))
+			// ImGui control is actively being edited. BACK remains available as the
+			// guaranteed escape from the detached right-side editor.
+			if (!uiEditingKeyboard && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, (Hash)NativeInputs::INPUT_FRONTEND_ACCEPT))
 				Teleport::TeleportPlayerToCoords(Self::GetPlayer(), position);
 
-			if (detachedEditorByFreecam && !uiOwnsKeyboard && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, (Hash)NativeInputs::INPUT_FRONTEND_CANCEL))
+			if (detachedEditorByFreecam && !io.WantTextInput && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, (Hash)NativeInputs::INPUT_FRONTEND_CANCEL))
 			{
 				SetState(false);
 				return;
