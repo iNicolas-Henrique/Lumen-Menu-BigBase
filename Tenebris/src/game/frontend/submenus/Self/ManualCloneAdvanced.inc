@@ -38,15 +38,18 @@ struct CloneSpeechParams
 };
 static_assert(sizeof(CloneSpeechParams) == 0x40);
 
+// Verified voice dictionaries: Armadillo, Strawberry, Saint Denis and Guarma
+// (Fussar henchmen). There are eight entries because the active clone cap is 8,
+// allowing active hostile clones to keep distinct voices whenever possible.
 constexpr std::array<CloneVoiceProfile, 8> kCloneVoices = {{
     {"ARMA_SHERIFF", "BUMP", "CHALLENGE_THREATEN"},
     {"0457_U_M_M_STRSHERRIFF_01", "CHAT_PATROL", "CHALLENGE_THREATEN_ARMED"},
     {"0998_S_M_M_AMBIENTSDPOLICE_WHITE_01", "CHAT_PATROL", "ARRIVAL_COMBAT_NEUTRAL"},
     {"1000_S_M_M_AMBIENTSDPOLICE_WHITE_03", "CHAT_PATROL", "CALL_FOR_SUPPORT"},
     {"1001_S_M_M_AMBIENTSDPOLICE_WHITE_04", "CHAT_PATROL", "CHALLENGE_THREATEN"},
-    {"BB_GUARD", "BUMP", "FIGHT"},
-    {"0978_S_M_M_AMBIENTLAWRURAL_WHITE_01", "CHAT_PATROL", "CHALLENGE_THREATEN"},
-    {"0979_S_M_M_AMBIENTLAWRURAL_WHITE_02", "CHAT_PATROL", "CALL_FOR_SUPPORT"},
+    {"0760_S_M_M_FUSSARHENCHMAN_01_HISPANIC_01", "CHAT_PATROL", "CHALLENGE_THREATEN"},
+    {"0762_S_M_M_FUSSARHENCHMAN_01_HISPANIC_03", "CHAT_PATROL", "ARRIVAL_COMBAT_NEUTRAL"},
+    {"0763_S_M_M_FUSSARHENCHMAN_01_HISPANIC_04", "CHAT_PATROL", "CALL_FOR_SUPPORT_FAR"},
 }};
 
 std::array<CloneRuntimeState, kMaxActiveClones> g_CloneRuntime{};
@@ -56,6 +59,28 @@ Hash g_HostileCloneRelationship{};
 Hash g_BodyguardCloneRelationship{};
 CloneOptions g_FreecamLiveOptions{};
 bool g_FreecamLiveOptionsValid{};
+
+int ChooseUniqueCloneVoiceIndex(int clone)
+{
+	std::array<bool, kCloneVoices.size()> used{};
+	for (const auto& state : g_CloneRuntime)
+	{
+		if (!state.Clone || state.Clone == clone || state.VoiceIndex < 0 || state.VoiceIndex >= static_cast<int>(kCloneVoices.size()))
+			continue;
+		if (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone))
+			continue;
+		used[static_cast<std::size_t>(state.VoiceIndex)] = true;
+	}
+
+	const int start = std::abs(clone) % static_cast<int>(kCloneVoices.size());
+	for (int offset = 0; offset < static_cast<int>(kCloneVoices.size()); ++offset)
+	{
+		const int index = (start + offset) % static_cast<int>(kCloneVoices.size());
+		if (!used[static_cast<std::size_t>(index)])
+			return index;
+	}
+	return start;
+}
 
 CloneRuntimeState& GetCloneRuntimeState(int clone)
 {
@@ -68,7 +93,7 @@ CloneRuntimeState& GetCloneRuntimeState(int clone)
 		{
 			state = {};
 			state.Clone = clone;
-			state.VoiceIndex = std::abs(clone) % static_cast<int>(kCloneVoices.size());
+			state.VoiceIndex = ChooseUniqueCloneVoiceIndex(clone);
 			state.NextMovementCheck = Clock::now() + 1700ms;
 			state.NextSpeech = Clock::now() + std::chrono::seconds(4 + (std::abs(clone) % 6));
 			return state;
@@ -76,6 +101,7 @@ CloneRuntimeState& GetCloneRuntimeState(int clone)
 	}
 	g_CloneRuntime[0] = {};
 	g_CloneRuntime[0].Clone = clone;
+	g_CloneRuntime[0].VoiceIndex = ChooseUniqueCloneVoiceIndex(clone);
 	return g_CloneRuntime[0];
 }
 
@@ -362,17 +388,14 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 	while (camera && CAM::DOES_CAM_EXIST(camera))
 	{
 		PAD::DISABLE_ALL_CONTROL_ACTIONS(0);
-		const bool uiOwnsMouse = ImGui::GetIO().WantCaptureMouse;
-		const bool uiTyping = ImGui::GetIO().WantTextInput;
+		auto& frameIo = ImGui::GetIO();
+		const bool uiOwnsMouse = frameIo.WantCaptureMouse;
+		const bool uiEditingKeyboard = frameIo.WantTextInput || (frameIo.WantCaptureKeyboard && ImGui::IsAnyItemActive());
 		if (!uiOwnsMouse)
 		{
 			PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_LOOK_LR), true);
 			PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_LOOK_UD), true);
 		}
-		PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_MOVE_LR), true);
-		PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_MOVE_UD), true);
-		PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_SPRINT), true);
-		PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_DUCK), true);
 
 		Vector3 position = CAM::GET_CAM_COORD(camera);
 		Vector3 rotation = CAM::GET_GAMEPLAY_CAM_ROT(2);
@@ -381,7 +404,10 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 		else
 			rotation = CAM::GET_CAM_ROT(camera, 2);
 
-		if (!uiTyping)
+		// Movement is read from disabled controls; we intentionally do not re-enable
+		// WASD/Shift/Ctrl for the game, so the frozen player/menu never receives the
+		// same movement input while the detached editor is open.
+		if (!uiEditingKeyboard)
 		{
 			const float speed = PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_SPRINT)) ? 1.35f : 0.45f;
 			const float yaw = rotation.z * 0.017453292519943295f;
@@ -404,13 +430,13 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 		const Vector3 marker = GetFreecamAimPoint(camera);
 		GRAPHICS::DRAW_MARKER(Joaat("BLIP_STYLE_OBJECTIVE"), marker.x, marker.y, marker.z + 0.08f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.24f, 0.24f, 0.24f, 225, 235, 205, 210, false, false, 2, false, nullptr, nullptr, false);
 
-		if (!uiTyping && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_ENTER)))
+		if (!uiEditingKeyboard && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_ENTER)))
 		{
 			CloneOptions spawnOptions = g_FreecamLiveOptionsValid ? g_FreecamLiveOptions : initialOptions;
 			SpawnManualCloneAt(spawnOptions, marker, rotation.z);
 			ScriptMgr::Yield(180ms);
 		}
-		if (!uiTyping && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_FRONTEND_CANCEL)))
+		if (!uiEditingKeyboard && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_FRONTEND_CANCEL)))
 			break;
 		ScriptMgr::Yield();
 	}
