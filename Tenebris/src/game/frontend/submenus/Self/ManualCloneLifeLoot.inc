@@ -12,6 +12,7 @@ struct CloneLifeLootState
     bool CorpsePromptsRestored{};
     int AmmoVariant{};
     int TonicCount{10};
+    int CloseLootTicks{};
     Clock::time_point IncapacitatedAt{};
 };
 
@@ -22,6 +23,7 @@ constexpr float kCloneBleedoutSeconds = 15.0f;
 constexpr int kRareLootAmmoAmount = 100;
 constexpr int kDisableAmbientPromptsFlag = 129;
 constexpr float kCloneLootInteractionRadius = 3.25f;
+constexpr float kCloneLootFallbackRadius = 1.65f;
 
 std::array<CloneLifeLootState, kMaxActiveClones> g_CloneLifeLoot{};
 
@@ -96,9 +98,6 @@ void ApplyCloneLifeProfile(int clone, CloneMode mode)
     PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
     PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
 
-    // Keep both clone classes lootable, but do not create a second inventory or
-    // per-frame reward system. The actual rare package is granted once when the
-    // local player starts looting the corpse.
     PED::SET_LOOTING_FLAG(clone, 0, true);
     PED::SET_LOOTING_FLAG(clone, 1, true);
     PED::SET_LOOTING_FLAG(clone, 15, true);
@@ -110,9 +109,6 @@ bool IsOwnerInteractingWithCloneLoot(int owner, int clone)
         ENTITY::IS_ENTITY_DEAD(owner) || !ENTITY::IS_ENTITY_DEAD(clone))
         return false;
 
-    // This native set does not expose _FIND_ENTITY_LOOTING_PED. Use the game's
-    // actual loot controls plus a tight corpse-distance/LOS gate instead. It keeps
-    // the package tied to the player's loot interaction without adding a pool scan.
     const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
     const Vector3 corpsePos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
     if (DistanceSquared(ownerPos, corpsePos) > kCloneLootInteractionRadius * kCloneLootInteractionRadius)
@@ -120,10 +116,12 @@ bool IsOwnerInteractingWithCloneLoot(int owner, int clone)
     if (!ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(owner, clone, 17))
         return false;
 
-    return PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT)) ||
-           PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT2)) ||
-           PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT3)) ||
-           PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT_AMMO));
+    const auto pressed = [](NativeInputs input) {
+        const int control = static_cast<int>(input);
+        return PAD::IS_CONTROL_PRESSED(0, control) || PAD::IS_DISABLED_CONTROL_PRESSED(0, control);
+    };
+    return pressed(NativeInputs::INPUT_LOOT) || pressed(NativeInputs::INPUT_LOOT2) ||
+           pressed(NativeInputs::INPUT_LOOT3) || pressed(NativeInputs::INPUT_LOOT_AMMO);
 }
 
 void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
@@ -132,11 +130,11 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
         return;
 
     const Hash ammoHash = RareLootAmmoHash(ammoVariant);
-    WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, kRareLootAmmoAmount, 0x2CD419DC);
+    // Use the same fill-style path already proven by GiveAllAmmo in this project.
+    // The game clamps to the inventory capacity for that ammo type, avoiding the
+    // tiny 6-round pickup behavior seen with normal corpse loot.
+    WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, 9999, 0x2CD419DC);
 
-    // Reuse the project's existing scripted-item reward path. This work runs in
-    // its own fiber and yields in small batches so 30 tonics never stall the
-    // shared clone/horse/radar controller.
     const Rewards::RewardInfo miracleTonic{0, "CONSUMABLE_TONIC"_J, "Miracle Tonic"};
     for (int i = 0; i < tonicCount; ++i)
     {
@@ -145,7 +143,7 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
             ScriptMgr::Yield(1ms);
     }
 
-    std::string message = "Saque raro: 100x ";
+    std::string message = "Saque raro: pacote 100x ";
     message += RareLootAmmoNamePt(ammoVariant);
     message += " + ";
     message += std::to_string(tonicCount);
@@ -155,8 +153,6 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
 
 void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
 {
-    // Clear only slots whose managed clone no longer exists. Dead managed clones
-    // deliberately keep their slot while their corpse is available for looting.
     for (auto& state : g_CloneLifeLoot)
     {
         if (state.Clone && (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone)))
@@ -179,17 +175,33 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
 
         if (ENTITY::IS_ENTITY_DEAD(clone))
         {
-            // Re-enable normal corpse prompts once. Loot checks remain lightweight
-            // and stop entirely after this clone has paid its rare package.
             if (!state.CorpsePromptsRestored)
             {
                 PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
                 state.CorpsePromptsRestored = true;
             }
 
-            if (!state.LootGranted && IsOwnerInteractingWithCloneLoot(owner, clone))
+            bool shouldGrant = !state.LootGranted && IsOwnerInteractingWithCloneLoot(owner, clone);
+            if (!shouldGrant && !state.LootGranted && owner && ENTITY::DOES_ENTITY_EXIST(owner) && !ENTITY::IS_ENTITY_DEAD(owner))
+            {
+                // Some RDR2 loot prompts consume/disable the control before this
+                // low-frequency controller samples it. Two consecutive very-close
+                // corpse checks are a reliable fallback and still avoid global scans.
+                const float distanceSq = DistanceSquared(
+                    ENTITY::GET_ENTITY_COORDS(owner, true, false),
+                    ENTITY::GET_ENTITY_COORDS(clone, true, false));
+                if (distanceSq <= kCloneLootFallbackRadius * kCloneLootFallbackRadius &&
+                    ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(owner, clone, 17))
+                    ++state.CloseLootTicks;
+                else
+                    state.CloseLootTicks = 0;
+                shouldGrant = state.CloseLootTicks >= 2;
+            }
+
+            if (shouldGrant)
             {
                 state.LootGranted = true;
+                state.CloseLootTicks = 0;
                 const int ammoVariant = state.AmmoVariant;
                 const int tonicCount = state.TonicCount;
                 FiberPool::Push([owner, ammoVariant, tonicCount] {
@@ -199,6 +211,7 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             continue;
         }
 
+        state.CloseLootTicks = 0;
         const bool incapacitated = PED::IS_PED_INCAPACITATED(clone);
         if (incapacitated)
         {
@@ -206,18 +219,10 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             {
                 state.WasIncapacitated = true;
                 state.IncapacitatedAt = now;
-                // Bodyguards retain the game's allied interaction prompts. Hostile
-                // clones hide ambient prompts while downed, so no revive interaction
-                // is offered for them. This config flag persists; one native call is
-                // enough until the state changes.
                 PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, managed.Mode != CloneMode::Bodyguard);
             }
 
             PED::SET_PAUSE_PED_WRITHE_BLEEDOUT(clone, false);
-
-            // Native bleedout is configured to 15 seconds, and this deadline is a
-            // deterministic backstop so a stuck writhe task cannot make a clone
-            // remain incapacitated forever.
             if (state.IncapacitatedAt != Clock::time_point{} && now - state.IncapacitatedAt >= 15s)
                 ENTITY::SET_ENTITY_HEALTH(clone, 0, 0);
             continue;
@@ -228,9 +233,6 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
 
         if (managed.Mode == CloneMode::Bodyguard)
         {
-            // Leaving incapacitation means the game's allied/bodyguard revive flow
-            // succeeded. Give enough recovery health to avoid instantly dropping
-            // again at the 50 HP threshold.
             state.WasIncapacitated = false;
             state.IncapacitatedAt = {};
             PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
@@ -241,9 +243,6 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
         }
         else
         {
-            // Hostile clones deliberately have no Tenebris revive path. If some
-            // external/game interaction pulls one out of incapacitation before its
-            // deadline, it cannot be converted into a saved hostile clone.
             ENTITY::SET_ENTITY_HEALTH(clone, 0, 0);
         }
     }
