@@ -21,6 +21,7 @@ constexpr int kCloneBleedoutMilliseconds = 15000;
 constexpr float kCloneBleedoutSeconds = 15.0f;
 constexpr int kRareLootAmmoAmount = 100;
 constexpr int kDisableAmbientPromptsFlag = 129;
+constexpr float kCloneLootInteractionRadius = 3.25f;
 
 std::array<CloneLifeLootState, kMaxActiveClones> g_CloneLifeLoot{};
 
@@ -103,6 +104,28 @@ void ApplyCloneLifeProfile(int clone, CloneMode mode)
     PED::SET_LOOTING_FLAG(clone, 15, true);
 }
 
+bool IsOwnerInteractingWithCloneLoot(int owner, int clone)
+{
+    if (!owner || !clone || !ENTITY::DOES_ENTITY_EXIST(owner) || !ENTITY::DOES_ENTITY_EXIST(clone) ||
+        ENTITY::IS_ENTITY_DEAD(owner) || !ENTITY::IS_ENTITY_DEAD(clone))
+        return false;
+
+    // This native set does not expose _FIND_ENTITY_LOOTING_PED. Use the game's
+    // actual loot controls plus a tight corpse-distance/LOS gate instead. It keeps
+    // the package tied to the player's loot interaction without adding a pool scan.
+    const Vector3 ownerPos = ENTITY::GET_ENTITY_COORDS(owner, true, false);
+    const Vector3 corpsePos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
+    if (DistanceSquared(ownerPos, corpsePos) > kCloneLootInteractionRadius * kCloneLootInteractionRadius)
+        return false;
+    if (!ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(owner, clone, 17))
+        return false;
+
+    return PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT)) ||
+           PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT2)) ||
+           PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT3)) ||
+           PAD::IS_CONTROL_PRESSED(0, static_cast<int>(NativeInputs::INPUT_LOOT_AMMO));
+}
+
 void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
 {
     if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner) || ENTITY::IS_ENTITY_DEAD(owner))
@@ -164,7 +187,7 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
                 state.CorpsePromptsRestored = true;
             }
 
-            if (!state.LootGranted && owner && ENTITY::DOES_ENTITY_EXIST(owner) && ENTITY::_FIND_ENTITY_LOOTING_PED(clone) == owner)
+            if (!state.LootGranted && IsOwnerInteractingWithCloneLoot(owner, clone))
             {
                 state.LootGranted = true;
                 const int ammoVariant = state.AmmoVariant;
