@@ -67,7 +67,7 @@ int ChooseUniqueCloneVoiceIndex(int clone)
 	{
 		if (!state.Clone || state.Clone == clone || state.VoiceIndex < 0 || state.VoiceIndex >= static_cast<int>(kCloneVoices.size()))
 			continue;
-		if (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone))
+		if (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
 			continue;
 		used[static_cast<std::size_t>(state.VoiceIndex)] = true;
 	}
@@ -89,7 +89,7 @@ CloneRuntimeState& GetCloneRuntimeState(int clone)
 			return state;
 	for (auto& state : g_CloneRuntime)
 	{
-		if (!state.Clone || !FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone))
+		if (!state.Clone || !FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
 		{
 			state = {};
 			state.Clone = clone;
@@ -197,9 +197,6 @@ void MaintainHostileNaturalMovement(const ManagedClone& managed, CloneRuntimeSta
 	const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(clone));
 	if (target && IsHostileCloneAlly(clone, target))
 	{
-		// Accidental friendly fire must never leave two Tenebris hostiles locked
-		// in an engine combat task against each other. Relationship groups stop
-		// normal acquisition; this repairs any task created by external damage.
 		TASK::CLEAR_PED_TASKS(clone, true, false);
 		TASK::TASK_WANDER_STANDARD(clone, 10.0f, 10);
 		state.StillChecks = 0;
@@ -328,8 +325,6 @@ void StartCloneEnhancementSupervisor()
 	FiberPool::Push([] {
 		while (g_CloneSupervisorRunning)
 		{
-			// The editor may be open for a long time before the first spawn. Do not
-			// touch relationship/audio/combat natives until a managed clone exists.
 			if (g_ManagedClones.empty())
 			{
 				ScriptMgr::Yield(500ms);
@@ -342,15 +337,20 @@ void StartCloneEnhancementSupervisor()
 				EnsureCloneRelationships(owner);
 			for (auto& state : g_CloneRuntime)
 			{
-				if (state.Clone && (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone)))
+				if (state.Clone && (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone)))
+					state = {};
+			}
+			for (auto& state : g_AggressivePerception)
+			{
+				if (state.Clone && (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone)))
 					state = {};
 			}
 			for (const auto& managed : g_ManagedClones)
 			{
-				if (!managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped))
+				if (!managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
 					continue;
 				auto& state = GetCloneRuntimeState(managed.Ped);
-				if (!state.ProfileApplied && !ENTITY::IS_ENTITY_DEAD(managed.Ped))
+				if (!state.ProfileApplied)
 					ApplyRuntimeCloneProfile(managed, state, owner);
 				if (managed.Mode != CloneMode::Bodyguard)
 					ApplyHostileCloneVoice(managed.Ped, state);
@@ -392,8 +392,12 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 	if (!camera)
 	{
 		AdvancedEditor::SetDetachedMode(false);
+		g_FreecamLiveOptionsValid = false;
 		if (reopenMenu && !GUI::IsOpen())
 			GUI::Toggle();
+		io.MouseDrawCursor = GUI::IsOpen();
+		if (GUI::IsOpen()) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+		else io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
 		return;
 	}
 
@@ -412,7 +416,7 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 		PAD::DISABLE_ALL_CONTROL_ACTIONS(0);
 		auto& frameIo = ImGui::GetIO();
 		const bool uiOwnsMouse = frameIo.WantCaptureMouse;
-		const bool uiEditingKeyboard = frameIo.WantTextInput || (frameIo.WantCaptureKeyboard && ImGui::IsAnyItemActive());
+		const bool uiEditingKeyboard = frameIo.WantTextInput || (frameIo.WantCaptureKeyboard && (ImGui::IsAnyItemActive() || frameIo.NavActive));
 		if (!uiOwnsMouse)
 		{
 			PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_LOOK_LR), true);
@@ -459,8 +463,6 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 			          position.z + std::sin(pitch) * 20.0f};
 		}
 
-		// Lightweight screen-centre reticle replaces the GTA-style DRAW_MARKER
-		// native, which is not exposed by this RDR2 NativeDB snapshot.
 		if (const ImGuiViewport* viewport = ImGui::GetMainViewport())
 		{
 			const ImVec2 center(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.5f);
