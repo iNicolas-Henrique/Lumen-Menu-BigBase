@@ -11,6 +11,7 @@ constexpr float kAggressiveSwitchMargin = 0.14f;
 constexpr float kAggressiveMemoryLeash = 1.20f;
 
 constexpr float kGuardHorseSearchRadius = 110.0f;
+constexpr float kGuardExtremeCatchupDistance = 420.0f;
 constexpr auto kGuardHorseAcquireInterval = 1300ms;
 constexpr auto kGuardMountTaskTimeout = 8s;
 constexpr auto kGuardThreatCacheInterval = 450ms;
@@ -125,18 +126,49 @@ void EnsureSupportHorseVisible(int horse)
 	if (!horse || !ENTITY::DOES_ENTITY_EXIST(horse))
 		return;
 	ENTITY::SET_ENTITY_VISIBLE(horse, true);
+	ENTITY::SET_ENTITY_ALPHA(horse, 255, false);
 	ENTITY::RESET_ENTITY_ALPHA(horse);
 	ENTITY::SET_ENTITY_COLLISION(horse, true, true);
+}
+
+bool RequestCleanupControl(int entity)
+{
+	if (!entity || !ENTITY::DOES_ENTITY_EXIST(entity))
+		return false;
+	if (!NETWORK::NETWORK_GET_ENTITY_IS_NETWORKED(entity))
+		return true;
+	for (int attempt = 0; attempt < 8 && !NETWORK::NETWORK_HAS_CONTROL_OF_ENTITY(entity); ++attempt)
+	{
+		NETWORK::NETWORK_REQUEST_CONTROL_OF_ENTITY(entity);
+		ScriptMgr::Yield(8ms);
+	}
+	return NETWORK::NETWORK_HAS_CONTROL_OF_ENTITY(entity);
+}
+
+void ForceCleanupPedEntity(int ped)
+{
+	if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped))
+		return;
+	RequestCleanupControl(ped);
+	int handle = ped;
+	ENTITY::SET_ENTITY_AS_MISSION_ENTITY(handle, true, true);
+	PED::DELETE_PED(&handle);
+	if (ENTITY::DOES_ENTITY_EXIST(ped))
+	{
+		handle = ped;
+		ENTITY::DELETE_ENTITY(&handle);
+	}
+	if (ENTITY::DOES_ENTITY_EXIST(ped))
+	{
+		handle = ped;
+		ENTITY::SET_ENTITY_AS_NO_LONGER_NEEDED(&handle);
+	}
 }
 
 void DeleteSupportHorse(CloneSupportState& state)
 {
 	if (state.HorseOwned && state.Horse && ENTITY::DOES_ENTITY_EXIST(state.Horse))
-	{
-		int horse = state.Horse;
-		ENTITY::SET_ENTITY_AS_MISSION_ENTITY(horse, true, true);
-		PED::DELETE_PED(&horse);
-	}
+		ForceCleanupPedEntity(state.Horse);
 	state.Horse = 0;
 	state.HorseOwned = false;
 	state.MountTaskUntil = {};
@@ -408,13 +440,18 @@ int SpawnDedicatedGuardHorse(int clone)
 		return 0;
 	const Vector3 spawn = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(clone, 2.0f, -4.0f, 0.5f);
 	int horse = PED::CREATE_PED(model, spawn.x, spawn.y, spawn.z, ENTITY::GET_ENTITY_HEADING(clone), false, false, false, false);
-	STREAMING::SET_MODEL_AS_NO_LONGER_NEEDED(model);
 	if (!horse || !ENTITY::DOES_ENTITY_EXIST(horse))
+	{
+		STREAMING::SET_MODEL_AS_NO_LONGER_NEEDED(model);
 		return 0;
+	}
 	ENTITY::SET_ENTITY_AS_MISSION_ENTITY(horse, true, true);
+	PED::_SET_RANDOM_OUTFIT_VARIATION(horse, true);
+	PED::_UPDATE_PED_VARIATION(horse, false, true, true, true, false);
 	ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(horse, true);
 	EnsureSupportHorseVisible(horse);
 	PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(horse, false);
+	STREAMING::SET_MODEL_AS_NO_LONGER_NEEDED(model);
 	return horse;
 }
 
@@ -561,6 +598,23 @@ void MaintainProfessionalBodyguardFollow(int clone, int owner, Clock::time_point
 		nextHorse = now + kGuardHorseAcquireInterval;
 	}
 
+	// Preserve the old extreme catch-up behavior without making normal follow
+	// depend on LOS. At >420 m we avoid asking RDR2 to pathfind across half the map.
+	// Dismissed guards still travel normally; this only acts as the documented
+	// extreme fallback when their source player is exceptionally far away.
+	if (dSq > kGuardExtremeCatchupDistance * kGuardExtremeCatchupDistance && !PED::IS_PED_IN_COMBAT(clone, 0))
+	{
+		const Vector3 catchup = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(anchor, sideOffset * 2.0f, backOffset * 2.0f, 0.25f);
+		const int mount = PED::IS_PED_ON_MOUNT(clone) ? PED::GET_MOUNT(clone) : 0;
+		const int travelEntity = mount && ENTITY::DOES_ENTITY_EXIST(mount) ? mount : clone;
+		ENTITY::SET_ENTITY_COORDS_NO_OFFSET(travelEntity, catchup.x, catchup.y, catchup.z, true, true, true);
+		if (mount)
+			EnsureSupportHorseVisible(mount);
+		followIssued = false;
+		nextFollow = now;
+		return;
+	}
+
 	const bool mounted = PED::IS_PED_ON_MOUNT(clone);
 	if (dSq <= kFollowStopRadius * kFollowStopRadius && !mounted && !dismissed)
 	{
@@ -664,19 +718,10 @@ void DeleteAllManagedClonesAndMounts()
 	}
 	for (auto& managed : g_ManagedClones)
 	{
-		if (!managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped))
-			continue;
-		if (managed.Networked)
-		{
-			for (int attempt = 0; attempt < 8 && !NETWORK::NETWORK_HAS_CONTROL_OF_ENTITY(managed.Ped); ++attempt)
-			{
-				NETWORK::NETWORK_REQUEST_CONTROL_OF_ENTITY(managed.Ped);
-				ScriptMgr::Yield(8ms);
-			}
-		}
-		int ped = managed.Ped;
-		ENTITY::SET_ENTITY_AS_MISSION_ENTITY(ped, true, true);
-		PED::DELETE_PED(&ped);
+		if (managed.Ped && ENTITY::DOES_ENTITY_EXIST(managed.Ped))
+			ForceCleanupPedEntity(managed.Ped);
+		// Registry cleanup is unconditional. A remote/network entity that refuses
+		// deletion must never keep Tenebris at the 8-clone cap indefinitely.
 		managed.Ped = 0;
 	}
 	g_ManagedClones.clear();
