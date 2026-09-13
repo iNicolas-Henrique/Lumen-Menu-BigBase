@@ -12,8 +12,8 @@ namespace YimMenu
 
 // Compatibility overloads kept local to the manual-clone translation unit.
 // They deliberately call the generated NativeDB wrappers instead of resolving
-// hashes/handlers at runtime, so a bad crossmap lookup cannot turn into an
-// invalid function-pointer call while the clone editor is running.
+// hashes/handlers at runtime, keeping clone runtime calls typed and preventing
+// invalid function-pointer dispatches from compatibility shims.
 namespace PED
 {
 	inline void _SET_PED_COMPONENT_ENABLED(int ped, std::uint32_t componentHash, bool immediately, bool isMp, bool p4)
