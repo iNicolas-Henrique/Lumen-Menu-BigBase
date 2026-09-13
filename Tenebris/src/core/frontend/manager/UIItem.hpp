@@ -63,6 +63,10 @@ namespace YimMenu
 		{
 			return false;
 		}
+		virtual bool IsSelectable() const
+		{
+			return true;
+		}
 		virtual bool IsVisible() const
 		{
 			return true;
