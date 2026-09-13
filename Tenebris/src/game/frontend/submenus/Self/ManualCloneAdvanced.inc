@@ -208,9 +208,6 @@ void MaintainHostileNaturalMovement(const ManagedClone& managed, CloneRuntimeSta
 		state.StillChecks = 0;
 	if (state.StillChecks >= 2)
 	{
-		// Recover from the vanilla AI edge case where a completed combat task
-		// leaves a ped motionless. Wander is a stock RDR2 task and the clone brain
-		// can interrupt it immediately when a new target enters perception.
 		TASK::CLEAR_PED_TASKS(clone, true, false);
 		TASK::TASK_WANDER_STANDARD(clone, 10.0f, 10);
 		state.StillChecks = 0;
@@ -250,7 +247,7 @@ void MaintainCloneDamageMultiplier(const ManagedClone& managed, CloneRuntimeStat
 		const float extraScale = static_cast<float>(g_CloneDamagePercent - 100) / 100.0f;
 		int extra = static_cast<int>(std::lround(static_cast<float>(observedDamage) * extraScale));
 		if (IsBowWeaponHash(managed.Weapon))
-			extra = std::max(extra, 1); // marks bow correction on the head bone as well.
+			extra = std::max(extra, 1);
 		if (extra > 0)
 			PED::APPLY_DAMAGE_TO_PED(target, extra, 0, kCloneHeadBone, clone);
 	}
@@ -404,9 +401,6 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 		else
 			rotation = CAM::GET_CAM_ROT(camera, 2);
 
-		// Movement is read from disabled controls; we intentionally do not re-enable
-		// WASD/Shift/Ctrl for the game, so the frozen player/menu never receives the
-		// same movement input while the detached editor is open.
 		if (!uiEditingKeyboard)
 		{
 			const float speed = PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_SPRINT)) ? 1.35f : 0.45f;
@@ -427,8 +421,26 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 
 		CAM::SET_CAM_COORD(camera, position.x, position.y, position.z);
 		STREAMING::SET_FOCUS_POS_AND_VEL(position.x, position.y, position.z, 0.0f, 0.0f, 0.0f);
-		const Vector3 marker = GetFreecamAimPoint(camera);
-		GRAPHICS::DRAW_MARKER(Joaat("BLIP_STYLE_OBJECTIVE"), marker.x, marker.y, marker.z + 0.08f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.24f, 0.24f, 0.24f, 225, 235, 205, 210, false, false, 2, false, nullptr, nullptr, false);
+
+		Vector3 marker{};
+		if (!GetFreecamAimPoint(position, rotation, selfHandle, marker))
+		{
+			constexpr float kDegToRad = 0.017453292519943295f;
+			const float pitch = rotation.x * kDegToRad;
+			const float yaw = rotation.z * kDegToRad;
+			const float cp = std::cos(pitch);
+			marker = {position.x - std::sin(yaw) * cp * 20.0f,
+			          position.y + std::cos(yaw) * cp * 20.0f,
+			          position.z + std::sin(pitch) * 20.0f};
+		}
+
+		// Lightweight screen-centre reticle replaces the GTA-style DRAW_MARKER
+		// native, which is not exposed by this RDR2 NativeDB snapshot.
+		if (const ImGuiViewport* viewport = ImGui::GetMainViewport())
+		{
+			const ImVec2 center(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.5f);
+			ImGui::GetForegroundDrawList()->AddCircle(center, 4.0f, IM_COL32(225, 235, 205, 210), 12, 1.4f);
+		}
 
 		if (!uiEditingKeyboard && PAD::IS_DISABLED_CONTROL_JUST_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_ENTER)))
 		{
