@@ -7,6 +7,7 @@ struct CloneLifeLootState
     int Clone{};
     CloneMode Mode{CloneMode::Bodyguard};
     bool ProfileApplied{};
+    bool AimProfileApplied{};
     bool WasIncapacitated{};
     bool LootGranted{};
     bool CorpsePromptsRestored{};
@@ -14,6 +15,8 @@ struct CloneLifeLootState
     int TonicCount{10};
     int CloseLootTicks{};
     int LastHorseAppearance{};
+    int AimTarget{};
+    int LastAimTargetHealth{};
     Clock::time_point IncapacitatedAt{};
 };
 
@@ -129,8 +132,6 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
         return;
 
     const Hash ammoHash = RareLootAmmoHash(ammoVariant);
-    // The old six-round result was the game's normal corpse pickup. This custom
-    // package now fires reliably and explicitly adds the requested 100 rounds.
     WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, kRareLootAmmoAmount, 0x2CD419DC);
 
     const Rewards::RewardInfo miracleTonic{0, "CONSUMABLE_TONIC"_J, "Miracle Tonic"};
@@ -147,6 +148,49 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
     message += std::to_string(tonicCount);
     message += "x Tônico Milagroso";
     Notifications::Show("Tenebris", message, NotificationType::Success, 2800);
+}
+
+void MaintainCloneHeadFocus(const ManagedClone& managed, CloneLifeLootState& state)
+{
+    const int clone = managed.Ped;
+    if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone))
+        return;
+
+    if (!state.AimProfileApplied)
+    {
+        // Keep stock combat/navigation, but push the built-in NPC aim model very
+        // close to perfect. Bows remain at the requested 100% accuracy.
+        PED::SET_PED_ACCURACY(clone, IsBowWeaponHash(managed.Weapon) ? 100 : 98);
+        state.AimProfileApplied = true;
+    }
+
+    const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(clone));
+    if (!IsAnyLiveHumanPedTarget(target, clone))
+    {
+        state.AimTarget = 0;
+        state.LastAimTargetHealth = 0;
+        return;
+    }
+
+    const int health = ENTITY::GET_ENTITY_HEALTH(target);
+    if (state.AimTarget != target)
+    {
+        state.AimTarget = target;
+        state.LastAimTargetHealth = health;
+        return;
+    }
+
+    if (health < state.LastAimTargetHealth && ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(target, clone, true, true))
+    {
+        const int observedDamage = state.LastAimTargetHealth - health;
+        // Preserve TASK_COMBAT_PED movement/cover decisions instead of replacing
+        // the AI with a scripted turret. A tiny head-bone correction biases normal
+        // firearms to the head; bows receive the full observed hit again on the
+        // head bone, making their landed shots effectively head-focused.
+        const int headCorrection = IsBowWeaponHash(managed.Weapon) ? std::max(1, observedDamage) : 1;
+        PED::APPLY_DAMAGE_TO_PED(target, headCorrection, 0, kCloneHeadBone, clone);
+    }
+    state.LastAimTargetHealth = ENTITY::GET_ENTITY_HEALTH(target);
 }
 
 void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
@@ -176,9 +220,6 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             auto& support = GetCloneSupportState(clone);
             if (support.Horse && ENTITY::DOES_ENTITY_EXIST(support.Horse))
             {
-                // Newly created RDR2 horses may not render until a variation is
-                // initialized. Do this once per assigned horse, then keep the cheap
-                // visibility repair handled by the existing 900ms supervisor.
                 if (state.LastHorseAppearance != support.Horse)
                 {
                     PED::_SET_RANDOM_OUTFIT_VARIATION(support.Horse, true);
@@ -192,6 +233,9 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
                 state.LastHorseAppearance = 0;
             }
         }
+
+        if (!ENTITY::IS_ENTITY_DEAD(clone))
+            MaintainCloneHeadFocus(managed, state);
 
         if (ENTITY::IS_ENTITY_DEAD(clone))
         {
