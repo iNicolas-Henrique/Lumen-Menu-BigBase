@@ -23,14 +23,16 @@ namespace PED
 
 	inline int SET_PED_TO_RAGDOLL(int ped, int timeMin, int timeMax, int ragdollType, bool abortIfInjured, bool abortIfDead, bool)
 	{
-		return PED::SET_PED_TO_RAGDOLL(
+		using NativeRagdollFn = int (*)(Ped, int, int, int, int, int, const char*);
+		const auto nativeRagdoll = static_cast<NativeRagdollFn>(&PED::SET_PED_TO_RAGDOLL);
+		return nativeRagdoll(
 		    ped,
 		    timeMin,
 		    timeMax,
 		    ragdollType,
-		    abortIfInjured,
-		    abortIfDead,
-		    static_cast<const char*>(nullptr));
+		    abortIfInjured ? 1 : 0,
+		    abortIfDead ? 1 : 0,
+		    nullptr);
 	}
 }
 
