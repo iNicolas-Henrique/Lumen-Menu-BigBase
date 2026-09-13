@@ -414,6 +414,7 @@ namespace YimMenu::Submenus
 
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "CLONE MANUAL" : "MANUAL CLONE"; }
 			float GetPreferredEditorHeight() const override { return 720.0f; }
+			bool RequiresImGuiEditor() const override { return true; }
 			bool IsSelectable() const override { return true; }
 			void OnEditorOpened() override { EnsureCloneControllersStarted(); }
 			bool HandleEditorKey(int) override { return false; }
