@@ -21,8 +21,8 @@ namespace YimMenu
         static ImVec2 boneToScreen(rage::fvector3 bone);
         static void DrawSkeleton(Ped ped, ImDrawList* drawList, ImColor color);
         static void DrawHorseSkeleton(Ped horse, ImDrawList* drawList, ImColor color);
-        static void DrawPlayer(Player& plyr, ImDrawList* drawList);
-        static void DrawPeds(Ped ped, ImDrawList* drawList);
+        static void DrawPlayer(Player& plyr, ImDrawList* drawList, const rage::fvector3& selfPosition, Ped selfPed);
+        static void DrawPeds(Ped ped, ImDrawList* drawList, const rage::fvector3& selfPosition, Ped selfPed);
         static void Draw();
     };
 }

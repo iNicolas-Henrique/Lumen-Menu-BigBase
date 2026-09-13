@@ -1,6 +1,13 @@
 #pragma once
 
+#include <memory>
+
+namespace YimMenu
+{
+	class UIItem;
+}
+
 namespace YimMenu::Submenus
 {
-	void RenderVehicleSpawnerMenu();
+	std::shared_ptr<UIItem> CreateVehicleSpawnerItem();
 }

@@ -1,5 +1,6 @@
 #include "ScenarioPlayer.hpp"
 
+#include "core/frontend/Localization.hpp"
 #include "game/backend/FiberPool.hpp"
 #include "game/backend/MapEditor/Items/PedScenarios.hpp"
 #include "game/backend/ScriptMgr.hpp"
@@ -52,15 +53,15 @@ namespace YimMenu::Features::Self
             }
         }
 
-        ImGui::Text("Select a scenario to play");
-        ImGui::Combo("Scenario", &selectedScenarioIndex, scenarioNames.data(), static_cast<int>(scenarioNames.size()));
+        ImGui::Text("%s", Localization::IsPortuguese() ? "Selecione um cenário para reproduzir" : "Select a scenario to play");
+        ImGui::Combo(Localization::IsPortuguese() ? "Cenário" : "Scenario", &selectedScenarioIndex, scenarioNames.data(), static_cast<int>(scenarioNames.size()));
 
-        if (ImGui::Button("Play"))
+        if (ImGui::Button(Localization::IsPortuguese() ? "Reproduzir cenário" : "Play scenario"))
             PlaySelectedScenario();
 
         ImGui::SameLine();
 
-        if (ImGui::Button("Stop"))
+        if (ImGui::Button(Localization::IsPortuguese() ? "Parar cenário" : "Stop scenario"))
             StopScenario();
     }
 }

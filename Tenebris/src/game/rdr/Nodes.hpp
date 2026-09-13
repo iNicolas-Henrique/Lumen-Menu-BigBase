@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <rage/joaat.hpp>
 #include <network/sync/netSyncTree.hpp>
 #include "Enums.hpp"
@@ -55,7 +56,7 @@ namespace YimMenu
 	{
 	private:
 		SyncNodeFinder m_Finder;
-		bool m_Initialized = false;
+		std::atomic_bool m_Initialized{false};
 		std::mutex m_InitMutex;
 
 		SyncNodeId& FindImpl(uintptr_t addr);
@@ -70,22 +71,27 @@ namespace YimMenu
 	public:
 		static void Init()
 		{
-			std::lock_guard guard(GetInstance().m_InitMutex);
-			if (!GetInstance().m_Initialized)
-				GetInstance().InitImpl();
+			auto& instance = GetInstance();
+			if (instance.m_Initialized.load(std::memory_order_acquire))
+				return;
+
+			std::lock_guard guard(instance.m_InitMutex);
+			if (!instance.m_Initialized.load(std::memory_order_relaxed))
+				instance.InitImpl();
 		}
 
 		static void Reset()
 		{
-			std::lock_guard guard(GetInstance().m_InitMutex);
-			GetInstance().m_Finder.m_SyncNodeMap                = {};
-			GetInstance().m_Finder.m_GlobalNodeIds = {};
-			GetInstance().m_Initialized                         = false;
+			auto& instance = GetInstance();
+			std::lock_guard guard(instance.m_InitMutex);
+			instance.m_Finder.m_SyncNodeMap = {};
+			instance.m_Finder.m_GlobalNodeIds = {};
+			instance.m_Initialized.store(false, std::memory_order_release);
 		}
 
 		static bool IsInitialized()
 		{
-			return GetInstance().m_Initialized;
+			return GetInstance().m_Initialized.load(std::memory_order_acquire);
 		}
 
 		static SyncNodeId& Find(uintptr_t addr)

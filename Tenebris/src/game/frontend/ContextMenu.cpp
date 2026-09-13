@@ -22,25 +22,30 @@ namespace YimMenu::Features
 
 namespace YimMenu
 {
-	inline double CumulativeDistanceToMiddleOfScreen(rage::fvector2 screenPos)
+	inline float CumulativeDistanceToMiddleOfScreen(rage::fvector2 screenPos)
 	{
-		return std::abs(screenPos.x - 0.5) + std::abs(screenPos.y - 0.5);
+		return std::abs(screenPos.x - 0.5f) + std::abs(screenPos.y - 0.5f);
 	}
 
 	inline int GetEntityHandleClosestToMiddleOfScreen(bool includePlayers, bool includePeds, bool includeVehicles, bool includeObjects)
 	{
 		int closestHandle{};
-		float distance = 1;
+		float distance = 1.0f;
+		const int selfHandle = Self::GetPed().GetHandle();
 
-		auto updateClosestEntity = [&distance, &closestHandle](int handle) -> void {
-			auto worldCoords = ENTITY::GET_ENTITY_COORDS(handle, false, true);
+		auto updateClosestEntity = [&distance, &closestHandle, selfHandle](int handle) -> void {
+			if (!handle || handle == selfHandle)
+				return;
+
+			const auto worldCoords = ENTITY::GET_ENTITY_COORDS(handle, false, true);
 			rage::fvector2 screenPos{};
 			float worldCoords_[3] = {worldCoords.x, worldCoords.y, worldCoords.z};
 			Pointers.WorldToScreen(worldCoords_, &screenPos.x, &screenPos.y);
-			if (CumulativeDistanceToMiddleOfScreen(screenPos) < distance && handle != Self::GetPed().GetHandle())
+			const float screenDistance = CumulativeDistanceToMiddleOfScreen(screenPos);
+			if (screenDistance < distance)
 			{
 				closestHandle = handle;
-				distance = CumulativeDistanceToMiddleOfScreen(screenPos);
+				distance = screenDistance;
 			}
 		};
 
@@ -102,15 +107,13 @@ namespace YimMenu
 					    Features::_ContextPeds.GetState(),
 					    Features::_ContextVehicles.GetState(),
 					    Features::_ContextObjects.GetState());
-					nextEntityScan = now + std::chrono::milliseconds(75);
+					nextEntityScan = now + std::chrono::milliseconds(125);
 				}
 				const auto handle = cachedHandle;
 
 				static auto switchToMenu = [&](ContextOperationsMenu menu) -> void {
 					if (m_CurrentOperationsMenu != menu)
-					{
 						m_CurrentOperationsMenu = menu;
-					}
 				};
 
 				if (handle && ENTITY::DOES_ENTITY_EXIST(handle) && ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(Self::GetPed().GetHandle(), handle, 17))
@@ -125,13 +128,9 @@ namespace YimMenu
 							switchToMenu(ContextMenuPeds);
 					}
 					else if (m_Entity.IsVehicle())
-					{
-						switchToMenu(ContextMenuVehicles); // TODO: Improve Vehicle menu
-					}
+						switchToMenu(ContextMenuVehicles);
 					else if (m_Entity.IsObject())
-					{
-						switchToMenu(ContextMenuObjects); // TODO: Improve Objects Menu
-					}
+						switchToMenu(ContextMenuObjects);
 
 					if (m_CurrentOperationsMenu.m_SelectedOperation.m_Name.empty())
 						m_CurrentOperationsMenu.m_SelectedOperation = m_CurrentOperationsMenu.m_Operations.front();
@@ -167,21 +166,17 @@ namespace YimMenu
 
 	inline void DrawOperation(const ContextMenuOperation& operation, rage::fvector2 screenPos, bool selected, int position, ImDrawList* drawList)
 	{
-		// Make compatible with ESP
 		static auto esp = Commands::GetCommand<BoolCommand>("esp"_J);
-		if (esp->GetState())
+		if (esp && esp->GetState())
 			screenPos.y += 20;
 
 		if (position > 0)
-			screenPos.y += (m_OperationCardY * position) + 2 /* Margin between operation cards */;
+			screenPos.y += (m_OperationCardY * position) + 2;
 
-		auto cardColor = selected ? ImGui::ColorConvertFloat4ToU32(ImVec4(1, 0, 0, 0.5)) : ImGui::ColorConvertFloat4ToU32(ImVec4(1, 0, 0, 0.2));
-
-		ImVec2 endPos = ImVec2(screenPos.x + m_OperationCardX, screenPos.y + m_OperationCardY);
+		const auto cardColor = selected ? ImGui::ColorConvertFloat4ToU32(ImVec4(1, 0, 0, 0.5)) : ImGui::ColorConvertFloat4ToU32(ImVec4(1, 0, 0, 0.2));
+		const ImVec2 endPos(screenPos.x + m_OperationCardX, screenPos.y + m_OperationCardY);
 		drawList->AddRectFilled(ImVec2(screenPos.x, screenPos.y), endPos, cardColor, 3.f);
-
-		drawList->AddText(
-		    ImVec2(screenPos.x, screenPos.y), ImGui::ColorConvertFloat4ToU32(ImVec4(1, 1, 1, 1)), operation.m_Name.data());
+		drawList->AddText(ImVec2(screenPos.x, screenPos.y), ImGui::ColorConvertFloat4ToU32(ImVec4(1, 1, 1, 1)), operation.m_Name.data());
 	}
 
 	void ContextMenu::DrawContextMenuImpl()
@@ -192,10 +187,7 @@ namespace YimMenu
 			{
 				int position = 0;
 				for (const auto& operation : m_CurrentOperationsMenu.m_Operations)
-				{
-					DrawOperation(operation, m_ScreenPos, operation == m_CurrentOperationsMenu.m_SelectedOperation, position, drawList);
-					position++;
-				}
+					DrawOperation(operation, m_ScreenPos, operation == m_CurrentOperationsMenu.m_SelectedOperation, position++, drawList);
 			}
 		}
 	}

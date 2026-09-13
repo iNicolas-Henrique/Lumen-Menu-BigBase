@@ -43,10 +43,12 @@ jobs:
           }
           if (-not (Test-Path "Tenebris")) { throw "Diretorio Tenebris ausente." }
           if (Test-Path "Tenebris.dll") { throw "DLL antiga rastreada na raiz ainda existe." }
-          if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "T E N E B R I S" -Quiet)) {
-            throw "Logo TENEBRIS do console ausente."
+          if (-not (Select-String -Path "Tenebris/src/main.cpp" -Pattern "_______ ______ _   _ ______" -SimpleMatch -Quiet)) {
+            throw "Logo grande TENEBRIS do console ausente."
           }
-          if (-not (Select-String -Path "Tenebris/src/core/frontend/manager/UIManager.cpp" -Pattern "T E N E B R I S" -Quiet)) {
+          # O cabecalho grafico preserva a marca TENEBRIS mesmo no modo otimizado,
+          # por isso a verificacao usa a marca direta no arquivo do menu.
+          if (-not (Select-String -Path "Tenebris/src/core/frontend/manager/UIManager.cpp" -Pattern "TENEBRIS" -Quiet)) {
             throw "Marca TENEBRIS do menu ausente."
           }
           exit 0
@@ -81,3 +83,5 @@ jobs:
           name: Tenebris-DLL
           path: Tenebris/build/**/Tenebris.dll
           if-no-files-found: error
+
+# validation trigger: clone perception build

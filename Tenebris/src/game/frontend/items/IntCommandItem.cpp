@@ -15,10 +15,7 @@ namespace YimMenu
 	void IntCommandItem::Draw()
 	{
 		if (!m_Command)
-		{
-			ImGui::Text("Unknown!");
 			return;
-		}
 
 		int value = m_Command->GetState();
 		auto label = m_LabelOverride.has_value() ? m_LabelOverride.value().c_str() : m_Command->GetLabel().c_str();
@@ -33,16 +30,21 @@ namespace YimMenu
 
 	std::string_view IntCommandItem::GetMenuLabel() const
 	{
+		if (!m_Command)
+			return {};
 		return m_LabelOverride ? *m_LabelOverride : m_Command->GetLabel();
 	}
+
 	std::string IntCommandItem::GetMenuValue() const
 	{
 		return m_Command ? std::to_string(m_Command->GetState()) : "";
 	}
+
 	std::string_view IntCommandItem::GetMenuDescription() const
 	{
 		return m_Command ? m_Command->GetDescription() : std::string_view{};
 	}
+
 	void IntCommandItem::HandleMenuAction(MenuAction action)
 	{
 		if (!m_Command || action == MenuAction::Enter)
@@ -54,5 +56,10 @@ namespace YimMenu
 		if ((delta > 0 && current >= maximum) || (delta < 0 && current <= minimum))
 			return;
 		m_Command->SetState(current + delta);
+	}
+
+	bool IntCommandItem::IsVisible() const
+	{
+		return m_Command != nullptr;
 	}
 }

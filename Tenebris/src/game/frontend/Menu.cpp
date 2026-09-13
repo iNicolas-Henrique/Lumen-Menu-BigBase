@@ -1,23 +1,24 @@
 #include "Menu.hpp"
 
 #include "core/commands/Commands.hpp"
+#include "core/frontend/manager/AdvancedEditor.hpp"
 #include "core/frontend/manager/UIManager.hpp"
 #include "core/renderer/Renderer.hpp"
-#include "game/backend/FiberPool.hpp"
-#include "game/backend/ScriptMgr.hpp"
 #include "game/frontend/fonts/Fonts.hpp"
+#include "game/frontend/items/Items.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "submenus/Debug.hpp"
+#include "submenus/HorseBonding.hpp"
 #include "submenus/Network.hpp"
 #include "submenus/Players.hpp"
 #include "submenus/Recovery.hpp"
 #include "submenus/Self.hpp"
+#include "submenus/Self/ManualClone.hpp"
 #include "submenus/Settings.hpp"
 #include "submenus/Teleport.hpp"
 #include "submenus/World.hpp"
 
 #include <Windows.h>
-#include <algorithm>
 #include <vector>
 
 #pragma comment(lib, "Version.lib")
@@ -53,6 +54,25 @@ namespace YimMenu
 			    HIWORD(versionInfo->dwFileVersionLS),
 			    LOWORD(versionInfo->dwFileVersionLS));
 		}
+
+		void AddSelfShortcuts(const std::shared_ptr<Submenu>& submenu)
+		{
+			for (auto& category : submenu->m_Categories)
+			{
+				if (!category)
+					continue;
+				if (category->m_Name == "Principal")
+				{
+					category->PrependItem(Submenus::CreateManualCloneItem());
+					category->PrependItem(std::make_shared<CommandItem>("maximumhostility"_J, "Aplicar nível de procurado"));
+				}
+				else if (category->m_Name == "Armas")
+				{
+					category->PrependItem(std::make_shared<CommandItem>("giveallammo"_J, "Dar munição"));
+					category->PrependItem(std::make_shared<CommandItem>("giveallweapons"_J, "Dar armas"));
+				}
+			}
+		}
 	}
 
 	static YimMenu::Submenus::Settings g_SettingsInstance;
@@ -61,7 +81,10 @@ namespace YimMenu
 	{
 		g_SettingsInstance.LoadSettings();
 
-		UIManager::AddSubmenu(std::make_shared<Submenus::Self>());
+		auto selfSubmenu = std::make_shared<Submenus::Self>();
+		Submenus::InstallHorseBonding(selfSubmenu);
+		AddSelfShortcuts(selfSubmenu);
+		UIManager::AddSubmenu(std::move(selfSubmenu));
 		UIManager::AddSubmenu(std::make_shared<Submenus::Teleport>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Network>());
 		UIManager::AddSubmenu(std::make_shared<Submenus::Players>());
@@ -73,7 +96,10 @@ namespace YimMenu
 		Renderer::AddRendererCallBack(
 		    [] {
 			    if (!GUI::IsOpen())
+			    {
+				    AdvancedEditor::CloseImmediate();
 				    return;
+			    }
 
 			    static bool runtimeInfoLoaded = false;
 			    if (!runtimeInfoLoaded)
@@ -136,12 +162,10 @@ namespace YimMenu
 		ImFontConfig FontCfg{};
 		FontCfg.FontDataOwnedByAtlas = false;
 
-		const std::filesystem::path bodyFontPath = std::filesystem::path(std::getenv("WINDIR") ? std::getenv("WINDIR") : "C:\\Windows") / "Fonts" / "georgia.ttf";
-		Menu::Font::g_DefaultFont = std::filesystem::exists(bodyFontPath) ? IO.Fonts->AddFontFromFileTTF(bodyFontPath.string().c_str(), 18.0f) : nullptr;
-		if (!Menu::Font::g_DefaultFont)
-			Menu::Font::g_DefaultFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
-		Menu::Font::g_OptionsFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
-		Menu::Font::g_ChildTitleFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
+		auto* uiFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 19.0f, &FontCfg);
+		Menu::Font::g_DefaultFont = uiFont;
+		Menu::Font::g_OptionsFont = uiFont;
+		Menu::Font::g_ChildTitleFont = uiFont;
 		Menu::Font::g_ChatFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 22.0f, &FontCfg);
 		Menu::Font::g_OverlayFont = IO.Fonts->AddFontFromMemoryTTF(const_cast<std::uint8_t*>(Fonts::MainFont), sizeof(Fonts::MainFont), 16.0f, &FontCfg);
 
