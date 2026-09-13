@@ -28,6 +28,7 @@ constexpr int kRareLootAmmoAmount = 100;
 constexpr int kDisableAmbientPromptsFlag = 129;
 constexpr float kCloneLootInteractionRadius = 3.25f;
 constexpr float kCloneLootFallbackRadius = 1.65f;
+constexpr Hash kCloneLootAddReason = 0x2CD419DC;
 
 std::array<CloneLifeLootState, kMaxActiveClones> g_CloneLifeLoot{};
 
@@ -126,28 +127,106 @@ bool IsOwnerInteractingWithCloneLoot(int owner, int clone)
            pressed(NativeInputs::INPUT_LOOT3) || pressed(NativeInputs::INPUT_LOOT_AMMO);
 }
 
+int GiveRareAmmoVerified(int owner, Hash ammoHash, int requestedAmount)
+{
+    if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner) || requestedAmount <= 0)
+        return 0;
+
+    const int before = std::max(0, WEAPON::GET_PED_AMMO_BY_TYPE(owner, ammoHash));
+    int target = before + requestedAmount;
+
+    // The old implementation only asked the game to add 100 and then printed
+    // "100" regardless of what the ammo pool really accepted. Resolve the ammo
+    // type back to a weapon so GET_MAX_AMMO can clamp the requested target to the
+    // real capacity when that information is available.
+    const Hash weaponType = WEAPON::_GET_WEAPON_TYPE_FROM_AMMO_TYPE(ammoHash);
+    int maxAmmo{};
+    if (weaponType && WEAPON::GET_MAX_AMMO(owner, &maxAmmo, weaponType) && maxAmmo >= before)
+        target = std::min(target, maxAmmo);
+
+    if (target <= before)
+        return 0;
+
+    // SET_PED_AMMO_BY_TYPE is deterministic for the local ammo pool. A small
+    // batched ADD fallback handles builds/session states that reject the direct
+    // set without creating a per-frame worker or any persistent polling.
+    WEAPON::SET_PED_AMMO_BY_TYPE(owner, ammoHash, target);
+    ScriptMgr::Yield(2ms);
+
+    int after = std::max(0, WEAPON::GET_PED_AMMO_BY_TYPE(owner, ammoHash));
+    for (int attempt = 0; attempt < 4 && after < target; ++attempt)
+    {
+        const int remaining = target - after;
+        WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, std::min(remaining, 25), kCloneLootAddReason);
+        ScriptMgr::Yield(3ms);
+        after = std::max(after, WEAPON::GET_PED_AMMO_BY_TYPE(owner, ammoHash));
+    }
+
+    return std::max(0, after - before);
+}
+
+int GetInventoryItemCountForPed(int ped, Hash item)
+{
+    if (!ped || !ENTITY::DOES_ENTITY_EXIST(ped))
+        return -1;
+    const int inventoryId = INVENTORY::_INVENTORY_GET_INVENTORY_ID_FROM_PED(ped);
+    if (inventoryId < 0)
+        return -1;
+    return INVENTORY::_INVENTORY_GET_INVENTORY_ITEM_COUNT_WITH_ITEMID(inventoryId, item, false);
+}
+
+int GiveMiracleTonicsVerified(int owner, int requestedAmount)
+{
+    if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner) || requestedAmount <= 0)
+        return 0;
+
+    constexpr Hash miracleTonicHash = "CONSUMABLE_TONIC"_J;
+    const Rewards::RewardInfo miracleTonic{0, miracleTonicHash, "Miracle Tonic"};
+    const int before = GetInventoryItemCountForPed(owner, miracleTonicHash);
+
+    for (int i = 0; i < requestedAmount; ++i)
+    {
+        Rewards::GiveScriptReward(miracleTonic, false);
+        // Reward delivery is not a hot path. Giving the inventory script a tiny
+        // amount of breathing room is much safer than flooding 30 awards at once.
+        ScriptMgr::Yield(2ms);
+    }
+
+    if (before < 0)
+        return requestedAmount; // Inventory API unavailable: preserve legacy behavior.
+
+    int bestAfter = before;
+    for (int attempt = 0; attempt < 6; ++attempt)
+    {
+        ScriptMgr::Yield(20ms);
+        const int current = GetInventoryItemCountForPed(owner, miracleTonicHash);
+        if (current >= 0)
+            bestAfter = std::max(bestAfter, current);
+        if (bestAfter - before >= requestedAmount)
+            break;
+    }
+    return std::clamp(bestAfter - before, 0, requestedAmount);
+}
+
 void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
 {
     if (!owner || !ENTITY::DOES_ENTITY_EXIST(owner) || ENTITY::IS_ENTITY_DEAD(owner))
         return;
 
     const Hash ammoHash = RareLootAmmoHash(ammoVariant);
-    WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, kRareLootAmmoAmount, 0x2CD419DC);
+    const int ammoDelivered = GiveRareAmmoVerified(owner, ammoHash, kRareLootAmmoAmount);
+    const int tonicsDelivered = GiveMiracleTonicsVerified(owner, tonicCount);
 
-    const Rewards::RewardInfo miracleTonic{0, "CONSUMABLE_TONIC"_J, "Miracle Tonic"};
-    for (int i = 0; i < tonicCount; ++i)
-    {
-        Rewards::GiveScriptReward(miracleTonic, false);
-        if ((i + 1) % 5 == 0)
-            ScriptMgr::Yield(1ms);
-    }
-
-    std::string message = "Saque raro: 100x ";
+    std::string message = "Saque raro: +";
+    message += std::to_string(ammoDelivered);
+    message += "x ";
     message += RareLootAmmoNamePt(ammoVariant);
     message += " + ";
-    message += std::to_string(tonicCount);
+    message += std::to_string(tonicsDelivered);
     message += "x Tônico Milagroso";
-    Notifications::Show("Tenebris", message, NotificationType::Success, 2800);
+    if (ammoDelivered < kRareLootAmmoAmount || tonicsDelivered < tonicCount)
+        message += " (limite real do inventário aplicado)";
+    Notifications::Show("Tenebris", message, NotificationType::Success, 3200);
 }
 
 void MaintainCloneHeadFocus(const ManagedClone& managed, CloneLifeLootState& state)
