@@ -166,8 +166,13 @@ void ApplyHostileCloneVoice(int clone, CloneRuntimeState& state)
 
 void PlayCloneSituationSpeech(int clone, CloneRuntimeState& state, bool combat)
 {
-	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone) || PED::IS_PED_ON_MOUNT(clone))
+	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone) || PED::IS_PED_ON_MOUNT(clone) || IsMountPlanActive(clone))
 		return;
+	if (AUDIO::IS_AMBIENT_SPEECH_PLAYING(clone) || AUDIO::IS_SCRIPTED_SPEECH_PLAYING(clone))
+	{
+		state.NextSpeech = Clock::now() + 2s;
+		return;
+	}
 	ApplyHostileCloneVoice(clone, state);
 	const auto& voice = kCloneVoices[state.VoiceIndex];
 	CloneSpeechParams params{};
@@ -188,7 +193,21 @@ void MaintainHostileNaturalMovement(const ManagedClone& managed, CloneRuntimeSta
 	const int clone = managed.Ped;
 	if (!clone || managed.Mode == CloneMode::Bodyguard || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone))
 		return;
+
 	const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(clone));
+	if (target && IsHostileCloneAlly(clone, target))
+	{
+		// Accidental friendly fire must never leave two Tenebris hostiles locked
+		// in an engine combat task against each other. Relationship groups stop
+		// normal acquisition; this repairs any task created by external damage.
+		TASK::CLEAR_PED_TASKS(clone, true, false);
+		TASK::TASK_WANDER_STANDARD(clone, 10.0f, 10);
+		state.StillChecks = 0;
+		state.LastIdlePosition = ENTITY::GET_ENTITY_COORDS(clone, true, false);
+		state.NextMovementCheck = now + 1700ms;
+		return;
+	}
+
 	const bool inCombat = (target && IsAnyLiveHumanPedTarget(target, clone)) || PED::IS_PED_IN_COMBAT(clone, 0);
 	if (inCombat)
 	{
@@ -281,7 +300,6 @@ void SetBodyguardsDismissed(bool dismissed)
 {
 	g_BodyguardsDismissed = dismissed;
 	g_BodyguardThreatCache = {};
-	const auto now = Clock::now();
 	for (const auto& managed : g_ManagedClones)
 	{
 		if (managed.Mode != CloneMode::Bodyguard || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
@@ -300,7 +318,6 @@ void SetBodyguardsDismissed(bool dismissed)
 		dismissed ? (Localization::IsPortuguese() ? "Guarda-costas dispensados: retornando aos jogadores originais." : "Bodyguards dismissed: returning to their source players.")
 		          : (Localization::IsPortuguese() ? "Guarda-costas convocados novamente." : "Bodyguards recalled."),
 		NotificationType::Info, 2600);
-	(void)now;
 }
 
 void StartCloneEnhancementSupervisor()
@@ -311,6 +328,14 @@ void StartCloneEnhancementSupervisor()
 	FiberPool::Push([] {
 		while (g_CloneSupervisorRunning)
 		{
+			// The editor may be open for a long time before the first spawn. Do not
+			// touch relationship/audio/combat natives until a managed clone exists.
+			if (g_ManagedClones.empty())
+			{
+				ScriptMgr::Yield(500ms);
+				continue;
+			}
+
 			const auto now = Clock::now();
 			const int owner = PLAYER::PLAYER_PED_ID();
 			if (owner && ENTITY::DOES_ENTITY_EXIST(owner))
@@ -403,7 +428,7 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 
 		if (!uiEditingKeyboard)
 		{
-			const float speed = PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_SPRINT)) ? 1.35f : 0.45f;
+			const float speed = 0.45f;
 			const float yaw = rotation.z * 0.017453292519943295f;
 			const float pitch = rotation.x * 0.017453292519943295f;
 			const float forwardX = -std::sin(yaw) * std::cos(pitch);
@@ -415,7 +440,7 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 			if (PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_MOVE_DOWN_ONLY))) { position.x -= forwardX * speed; position.y -= forwardY * speed; position.z -= forwardZ * speed; }
 			if (PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_MOVE_LEFT_ONLY))) { position.x -= rightX * speed; position.y -= rightY * speed; }
 			if (PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_MOVE_RIGHT_ONLY))) { position.x += rightX * speed; position.y += rightY * speed; }
-			if (PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_SPRINT))) position.z += 0.02f;
+			if (PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_SPRINT))) position.z += speed * 0.65f;
 			if (PAD::IS_DISABLED_CONTROL_PRESSED(0, static_cast<Hash>(NativeInputs::INPUT_DUCK))) position.z -= speed * 0.65f;
 		}
 
