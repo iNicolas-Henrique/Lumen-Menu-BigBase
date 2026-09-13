@@ -200,6 +200,15 @@ namespace YimMenu::Submenus
 		{
 			while (true)
 			{
+				// Nothing in this controller is needed until at least one managed
+				// clone exists. Keeping the editor-open path free of game-native work
+				// also avoids the old crash surface when simply entering CLONE MANUAL.
+				if (g_ManagedClones.empty())
+				{
+					ScriptMgr::Yield(700ms);
+					continue;
+				}
+
 				auto self = Self::GetPed();
 				if (!self.IsValid() || self.GetHealth() <= 0)
 				{
@@ -219,7 +228,7 @@ namespace YimMenu::Submenus
 					hasGuards = true;
 					SyncBodyguardMountState(managed.Ped, owner, ownerMounted, now);
 				}
-				ScriptMgr::Yield(hasGuards ? 250ms : (!g_ManagedClones.empty() ? 350ms : 700ms));
+				ScriptMgr::Yield(hasGuards ? 250ms : 350ms);
 			}
 		}
 
@@ -300,7 +309,6 @@ namespace YimMenu::Submenus
 		public:
 			void Draw() override
 			{
-				EnsureCloneControllersStarted();
 				if (AdvancedEditor::IsDetachedMode())
 				{
 					g_FreecamLiveOptions = GetOptions();
@@ -399,11 +407,13 @@ namespace YimMenu::Submenus
 				if (ImGui::Button(Localization::IsPortuguese() ? "CRIAR CLONE" : "CREATE CLONE", ImVec2(-1.0f, 0.0f)))
 				{
 					const CloneOptions options = GetOptions();
+					EnsureCloneControllersStarted();
 					FiberPool::Push([options] { PruneManagedClones(true); SpawnManualCloneNearPlayer(options); });
 				}
 				if (ImGui::Button(Localization::IsPortuguese() ? "FREECAM MULTI-SPAWN" : "FREECAM MULTI-SPAWN", ImVec2(-1.0f, 0.0f)))
 				{
 					const CloneOptions options = GetOptions();
+					EnsureCloneControllersStarted();
 					FiberPool::Push([options] { RunCloneSpawnFreecamInteractive(options); });
 				}
 				ImGui::TextWrapped(Localization::IsPortuguese() ? "Na Freecam o editor fica preso à direita. Mouse sobre o painel edita; fora dele a câmera continua livre. ENTER cria clone e BACK sai." : "In Freecam the editor stays docked right. Mouse over it edits; outside it the camera stays free. ENTER spawns and BACK exits.");
@@ -416,7 +426,6 @@ namespace YimMenu::Submenus
 			float GetPreferredEditorHeight() const override { return 720.0f; }
 			bool RequiresImGuiEditor() const override { return true; }
 			bool IsSelectable() const override { return true; }
-			void OnEditorOpened() override { EnsureCloneControllersStarted(); }
 			bool HandleEditorKey(int) override { return false; }
 		};
 	}
