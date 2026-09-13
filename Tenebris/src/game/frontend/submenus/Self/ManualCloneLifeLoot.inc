@@ -13,6 +13,7 @@ struct CloneLifeLootState
     int AmmoVariant{};
     int TonicCount{10};
     int CloseLootTicks{};
+    int LastHorseAppearance{};
     Clock::time_point IncapacitatedAt{};
 };
 
@@ -51,8 +52,6 @@ CloneLifeLootState& GetCloneLifeLootState(int clone, CloneMode mode)
         }
     }
 
-    // kMaxActiveClones bounds the live registry, so this is only a defensive
-    // fallback for stale slots that survived an abnormal entity cleanup.
     g_CloneLifeLoot[0] = {};
     g_CloneLifeLoot[0].Clone = clone;
     g_CloneLifeLoot[0].Mode = mode;
@@ -65,8 +64,8 @@ Hash RareLootAmmoHash(int variant)
 {
     switch (variant)
     {
-    case 0: return "AMMO_RIFLE_EXPRESS"_J;       // rifles + sniper rifles
-    case 1: return "AMMO_SHOTGUN_SLUG"_J;        // rare shotgun load
+    case 0: return "AMMO_RIFLE_EXPRESS"_J;
+    case 1: return "AMMO_SHOTGUN_SLUG"_J;
     case 2: return "AMMO_PISTOL_EXPRESS"_J;
     case 3: return "AMMO_REVOLVER_EXPRESS"_J;
     default: return "AMMO_REPEATER_EXPRESS"_J;
@@ -130,9 +129,9 @@ void GrantCloneRareLoot(int owner, int ammoVariant, int tonicCount)
         return;
 
     const Hash ammoHash = RareLootAmmoHash(ammoVariant);
-    // Use the same fill-style path already proven by GiveAllAmmo in this project.
-    // The game clamps to the inventory capacity for that ammo type, avoiding the
-    // tiny 6-round pickup behavior seen with normal corpse loot.
+    // Normal corpse loot can collapse to tiny pickups (for example six rounds).
+    // This uses the same proven fill path as the project's GiveAllAmmo feature;
+    // RDR2 clamps the result to the player's capacity for the selected ammo type.
     WEAPON::_ADD_AMMO_TO_PED_BY_TYPE(owner, ammoHash, 9999, 0x2CD419DC);
 
     const Rewards::RewardInfo miracleTonic{0, "CONSUMABLE_TONIC"_J, "Miracle Tonic"};
@@ -173,6 +172,28 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             state.ProfileApplied = true;
         }
 
+        if (managed.Mode == CloneMode::Bodyguard && !ENTITY::IS_ENTITY_DEAD(clone))
+        {
+            auto& support = GetCloneSupportState(clone);
+            if (support.Horse && ENTITY::DOES_ENTITY_EXIST(support.Horse))
+            {
+                // Newly created RDR2 horses may not render until a variation is
+                // initialized. Do this once per assigned horse, then keep the cheap
+                // visibility repair handled by the existing 900ms supervisor.
+                if (state.LastHorseAppearance != support.Horse)
+                {
+                    PED::_SET_RANDOM_OUTFIT_VARIATION(support.Horse, true);
+                    ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(support.Horse, true);
+                    state.LastHorseAppearance = support.Horse;
+                }
+                EnsureSupportHorseVisible(support.Horse);
+            }
+            else
+            {
+                state.LastHorseAppearance = 0;
+            }
+        }
+
         if (ENTITY::IS_ENTITY_DEAD(clone))
         {
             if (!state.CorpsePromptsRestored)
@@ -184,9 +205,6 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             bool shouldGrant = !state.LootGranted && IsOwnerInteractingWithCloneLoot(owner, clone);
             if (!shouldGrant && !state.LootGranted && owner && ENTITY::DOES_ENTITY_EXIST(owner) && !ENTITY::IS_ENTITY_DEAD(owner))
             {
-                // Some RDR2 loot prompts consume/disable the control before this
-                // low-frequency controller samples it. Two consecutive very-close
-                // corpse checks are a reliable fallback and still avoid global scans.
                 const float distanceSq = DistanceSquared(
                     ENTITY::GET_ENTITY_COORDS(owner, true, false),
                     ENTITY::GET_ENTITY_COORDS(clone, true, false));
