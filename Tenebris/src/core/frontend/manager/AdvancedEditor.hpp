@@ -16,5 +16,8 @@ namespace YimMenu
 		static bool HandleKey(int key);
 		static float GetEditorAlpha();
 		static float GetClassicMenuAlpha();
+		static void SetDetachedMode(bool detached);
+		static bool IsDetachedMode();
+		static bool ShouldRenderWhenMenuClosed();
 	};
 }
