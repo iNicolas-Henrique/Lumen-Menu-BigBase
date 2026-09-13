@@ -38,9 +38,9 @@ struct CloneSpeechParams
 };
 static_assert(sizeof(CloneSpeechParams) == 0x40);
 
-// Police/law voice dictionaries from Armadillo, Strawberry, Saint Denis and
-// Guarma/Fussar. With eight entries, the eight-clone cap can keep distinct
-// voices whenever possible instead of assigning the same voice to every clone.
+// Police/law voice dictionaries for hostile clones: Armadillo, Strawberry,
+// Saint Denis and Guarma/Fussar. With eight entries, the eight-clone cap can
+// keep distinct hostile voices whenever possible.
 constexpr std::array<CloneVoiceProfile, 8> kCloneVoices = {{
     {"ARMA_SHERIFF", "BUMP", "CHALLENGE_THREATEN"},
     {"0457_U_M_M_STRSHERRIFF_01", "CHAT_PATROL", "CHALLENGE_THREATEN_ARMED"},
@@ -67,7 +67,8 @@ int ChooseUniqueCloneVoiceIndex(int clone)
 	{
 		if (!state.Clone || state.Clone == clone || state.VoiceIndex < 0 || state.VoiceIndex >= static_cast<int>(kCloneVoices.size()))
 			continue;
-		if (!FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
+		auto* managed = FindManagedClone(state.Clone);
+		if (!managed || managed->Mode == CloneMode::Bodyguard || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
 			continue;
 		used[static_cast<std::size_t>(state.VoiceIndex)] = true;
 	}
@@ -160,20 +161,17 @@ void ApplyRuntimeCloneProfile(const ManagedClone& managed, CloneRuntimeState& st
 void ApplyCloneVoice(const ManagedClone& managed, CloneRuntimeState& state)
 {
 	const int clone = managed.Ped;
-	if (state.VoiceApplied || !clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
+	if (managed.Mode == CloneMode::Bodyguard || state.VoiceApplied || !clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
 		return;
 	state.VoiceIndex = std::clamp(state.VoiceIndex, 0, static_cast<int>(kCloneVoices.size()) - 1);
-	// Forced voice assignment produces a speech network event. Keep the override
-	// local-only so optional Network clones cannot corrupt remote speech state.
-	if (!managed.Networked)
-		AUDIO::SET_AMBIENT_VOICE_NAME(clone, kCloneVoices[static_cast<std::size_t>(state.VoiceIndex)].Dictionary);
+	AUDIO::SET_AMBIENT_VOICE_NAME(clone, kCloneVoices[static_cast<std::size_t>(state.VoiceIndex)].Dictionary);
 	state.VoiceApplied = true;
 }
 
 void PlayCloneSituationSpeech(const ManagedClone& managed, CloneRuntimeState& state, bool combat)
 {
 	const int clone = managed.Ped;
-	if (!clone || managed.Networked || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) ||
+	if (managed.Mode == CloneMode::Bodyguard || !clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) ||
 	    PED::IS_PED_INCAPACITATED(clone) || PED::IS_PED_ON_MOUNT(clone) || IsMountPlanActive(clone))
 		return;
 	if (AUDIO::IS_AMBIENT_SPEECH_PLAYING(clone) || AUDIO::IS_SCRIPTED_SPEECH_PLAYING(clone))
@@ -286,7 +284,7 @@ void MaintainCloneDamageMultiplier(const ManagedClone& managed, CloneRuntimeStat
 
 void MaintainCloneSpeech(const ManagedClone& managed, CloneRuntimeState& state, Clock::time_point now)
 {
-	if (now < state.NextSpeech || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
+	if (managed.Mode == CloneMode::Bodyguard || now < state.NextSpeech || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
 		return;
 	const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(managed.Ped));
 	const bool combat = (target && IsAnyLiveHumanPedTarget(target, managed.Ped)) || PED::IS_PED_IN_COMBAT(managed.Ped, 0);
@@ -366,7 +364,7 @@ void StartCloneEnhancementSupervisor()
 				auto& state = GetCloneRuntimeState(managed.Ped);
 				if (!state.ProfileApplied)
 					ApplyRuntimeCloneProfile(managed, state, owner);
-				if (!state.VoiceApplied)
+				if (managed.Mode != CloneMode::Bodyguard && !state.VoiceApplied)
 					ApplyCloneVoice(managed, state);
 				MaintainAssignedHorseVisibility(managed.Ped, state, now);
 				MaintainHostileNaturalMovement(managed, state, now);
@@ -430,7 +428,9 @@ void RunCloneSpawnFreecamInteractive(CloneOptions initialOptions)
 		PAD::DISABLE_ALL_CONTROL_ACTIONS(0);
 		auto& frameIo = ImGui::GetIO();
 		const bool uiOwnsMouse = frameIo.WantCaptureMouse;
-		const bool uiEditingKeyboard = frameIo.WantTextInput || (frameIo.WantCaptureKeyboard && (ImGui::IsAnyItemActive() || frameIo.NavActive));
+		// Mouse is the editor input in detached mode; keyboard remains free for
+		// the camera unless a widget is actively editing/typing.
+		const bool uiEditingKeyboard = frameIo.WantTextInput || (frameIo.WantCaptureKeyboard && ImGui::IsAnyItemActive());
 		if (!uiOwnsMouse)
 		{
 			PAD::ENABLE_CONTROL_ACTION(0, static_cast<Hash>(NativeInputs::INPUT_LOOK_LR), true);
