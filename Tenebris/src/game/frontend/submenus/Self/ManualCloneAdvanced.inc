@@ -38,9 +38,9 @@ struct CloneSpeechParams
 };
 static_assert(sizeof(CloneSpeechParams) == 0x40);
 
-// Verified voice dictionaries: Armadillo, Strawberry, Saint Denis and Guarma
-// (Fussar henchmen). There are eight entries because the active clone cap is 8,
-// allowing active hostile clones to keep distinct voices whenever possible.
+// Police/law voice dictionaries from Armadillo, Strawberry, Saint Denis and
+// Guarma/Fussar. With eight entries, the eight-clone cap can keep distinct
+// voices whenever possible instead of assigning the same voice to every clone.
 constexpr std::array<CloneVoiceProfile, 8> kCloneVoices = {{
     {"ARMA_SHERIFF", "BUMP", "CHALLENGE_THREATEN"},
     {"0457_U_M_M_STRSHERRIFF_01", "CHAT_PATROL", "CHALLENGE_THREATEN_ARMED"},
@@ -130,8 +130,10 @@ void EnsureCloneRelationships(int owner)
 	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(5, g_BodyguardCloneRelationship, g_HostileCloneRelationship);
 	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(5, g_HostileCloneRelationship, law);
 	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(5, law, g_HostileCloneRelationship);
-	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(5, g_BodyguardCloneRelationship, law);
-	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(5, law, g_BodyguardCloneRelationship);
+	// Guards stay neutral to idle law. They still defend the protected player
+	// when a cop is actually fighting/damaging that player through the threat scan.
+	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(3, g_BodyguardCloneRelationship, law);
+	PED::SET_RELATIONSHIP_BETWEEN_GROUPS(3, law, g_BodyguardCloneRelationship);
 	if (owner && ENTITY::DOES_ENTITY_EXIST(owner))
 	{
 		const Hash ownerGroup = PED::GET_PED_RELATIONSHIP_GROUP_HASH(owner);
@@ -155,37 +157,49 @@ void ApplyRuntimeCloneProfile(const ManagedClone& managed, CloneRuntimeState& st
 	state.ProfileApplied = true;
 }
 
-void ApplyHostileCloneVoice(int clone, CloneRuntimeState& state)
+void ApplyCloneVoice(const ManagedClone& managed, CloneRuntimeState& state)
 {
-	if (state.VoiceApplied || !clone || !ENTITY::DOES_ENTITY_EXIST(clone))
+	const int clone = managed.Ped;
+	if (state.VoiceApplied || !clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
 		return;
 	state.VoiceIndex = std::clamp(state.VoiceIndex, 0, static_cast<int>(kCloneVoices.size()) - 1);
-	AUDIO::SET_AMBIENT_VOICE_NAME(clone, kCloneVoices[state.VoiceIndex].Dictionary);
+	// Forced voice assignment produces a speech network event. Keep the override
+	// local-only so optional Network clones cannot corrupt remote speech state.
+	if (!managed.Networked)
+		AUDIO::SET_AMBIENT_VOICE_NAME(clone, kCloneVoices[static_cast<std::size_t>(state.VoiceIndex)].Dictionary);
 	state.VoiceApplied = true;
 }
 
-void PlayCloneSituationSpeech(int clone, CloneRuntimeState& state, bool combat)
+void PlayCloneSituationSpeech(const ManagedClone& managed, CloneRuntimeState& state, bool combat)
 {
-	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) || PED::IS_PED_INCAPACITATED(clone) || PED::IS_PED_ON_MOUNT(clone) || IsMountPlanActive(clone))
+	const int clone = managed.Ped;
+	if (!clone || managed.Networked || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) ||
+	    PED::IS_PED_INCAPACITATED(clone) || PED::IS_PED_ON_MOUNT(clone) || IsMountPlanActive(clone))
 		return;
 	if (AUDIO::IS_AMBIENT_SPEECH_PLAYING(clone) || AUDIO::IS_SCRIPTED_SPEECH_PLAYING(clone))
 	{
 		state.NextSpeech = Clock::now() + 2s;
 		return;
 	}
-	ApplyHostileCloneVoice(clone, state);
-	const auto& voice = kCloneVoices[state.VoiceIndex];
+
+	ApplyCloneVoice(managed, state);
+	if (state.VoiceIndex < 0 || state.VoiceIndex >= static_cast<int>(kCloneVoices.size()))
+		return;
+	const auto& voice = kCloneVoices[static_cast<std::size_t>(state.VoiceIndex)];
+	if (!voice.Dictionary || !voice.IdleLine || !voice.CombatLine)
+		return;
+
 	CloneSpeechParams params{};
 	params.IndexName = combat ? voice.CombatLine : voice.IdleLine;
 	params.DictionaryName = voice.Dictionary;
-	params.Variation = 0;
-	params.SpeechParamHash = Joaat("speech_params_force");
-	params.ListenerPed = PLAYER::PLAYER_PED_ID();
+	params.Variation = 1;
+	params.SpeechParamHash = Joaat("SPEECH_PARAMS_FORCE");
+	params.ListenerPed = 0;
 	params.SyncOverNetwork = 0;
 	params.V7 = 1;
-	params.V8 = 1;
-	AUDIO::PLAY_PED_AMBIENT_SPEECH_NATIVE(clone, reinterpret_cast<Any*>(&params));
-	state.NextSpeech = Clock::now() + std::chrono::seconds(combat ? RandomInt(7, 11) : RandomInt(11, 18));
+	params.V8 = 0;
+	const bool played = AUDIO::PLAY_PED_AMBIENT_SPEECH_NATIVE(clone, reinterpret_cast<Any*>(&params));
+	state.NextSpeech = Clock::now() + std::chrono::seconds(played ? (combat ? RandomInt(7, 11) : RandomInt(11, 18)) : 4);
 }
 
 void MaintainHostileNaturalMovement(const ManagedClone& managed, CloneRuntimeState& state, Clock::time_point now)
@@ -270,13 +284,13 @@ void MaintainCloneDamageMultiplier(const ManagedClone& managed, CloneRuntimeStat
 	state.LastTargetHealth = ENTITY::GET_ENTITY_HEALTH(target);
 }
 
-void MaintainHostileSpeech(const ManagedClone& managed, CloneRuntimeState& state, Clock::time_point now)
+void MaintainCloneSpeech(const ManagedClone& managed, CloneRuntimeState& state, Clock::time_point now)
 {
-	if (managed.Mode == CloneMode::Bodyguard || now < state.NextSpeech || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped))
+	if (now < state.NextSpeech || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
 		return;
 	const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(managed.Ped));
 	const bool combat = (target && IsAnyLiveHumanPedTarget(target, managed.Ped)) || PED::IS_PED_IN_COMBAT(managed.Ped, 0);
-	PlayCloneSituationSpeech(managed.Ped, state, combat);
+	PlayCloneSituationSpeech(managed, state, combat);
 }
 
 void MaintainAssignedHorseVisibility(int clone, CloneRuntimeState& state, Clock::time_point now)
@@ -352,12 +366,12 @@ void StartCloneEnhancementSupervisor()
 				auto& state = GetCloneRuntimeState(managed.Ped);
 				if (!state.ProfileApplied)
 					ApplyRuntimeCloneProfile(managed, state, owner);
-				if (managed.Mode != CloneMode::Bodyguard)
-					ApplyHostileCloneVoice(managed.Ped, state);
+				if (!state.VoiceApplied)
+					ApplyCloneVoice(managed, state);
 				MaintainAssignedHorseVisibility(managed.Ped, state, now);
 				MaintainHostileNaturalMovement(managed, state, now);
 				MaintainCloneDamageMultiplier(managed, state, now);
-				MaintainHostileSpeech(managed, state, now);
+				MaintainCloneSpeech(managed, state, now);
 			}
 			ScriptMgr::Yield(240ms);
 		}
