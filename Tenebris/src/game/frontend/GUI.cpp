@@ -42,18 +42,21 @@ namespace YimMenu
 	void GUI::ToggleMouse()
 	{
 		auto& io = ImGui::GetIO();
-		io.MouseDrawCursor = GUI::IsOpen();
-		GUI::IsOpen() ? io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse : io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
+		const bool editorDetached = AdvancedEditor::ShouldRenderWhenMenuClosed();
+		const bool mouseEnabled = GUI::IsOpen() || editorDetached;
+		io.MouseDrawCursor = mouseEnabled;
+		mouseEnabled ? io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse : io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
 	}
 
 	void GUI::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		const auto use_insert_key = Commands::GetCommand<BoolCommand>("togglemenukey"_J)->GetState();
 		const auto key_to_check = use_insert_key ? VK_INSERT : VK_F5;
+		const bool detachedEditor = AdvancedEditor::ShouldRenderWhenMenuClosed();
 
-		// Ignore the OS key-repeat bit here. Besides keeping navigation predictable,
-		// this prevents frontend sounds from being retriggered every repeat frame.
-		if (m_IsOpen && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
+		// The detached freecam editor remains keyboard/mouse interactive even
+		// though the classic menu is hidden. Key repeat is still ignored.
+		if ((m_IsOpen || detachedEditor) && msg == WM_KEYDOWN && (lparam & (1LL << 30)) == 0)
 		{
 			if (AdvancedEditor::IsOpen())
 			{
@@ -64,7 +67,7 @@ namespace YimMenu
 					editorKey = 'E';
 				AdvancedEditor::HandleKey(editorKey);
 			}
-			else
+			else if (m_IsOpen)
 			{
 				UIManager::HandleKey(wparam);
 			}
@@ -72,6 +75,11 @@ namespace YimMenu
 
 		if (msg == WM_KEYUP && wparam == key_to_check)
 		{
+			// During clone freecam F5/Insert must not destroy the editor or steal
+			// the carefully paired freecam cleanup. BACK remains the exit key.
+			if (detachedEditor)
+				return;
+
 			static POINT CursorCoords{};
 			const bool wasOpen = m_IsOpen;
 			if (m_IsOpen)
@@ -91,9 +99,6 @@ namespace YimMenu
 			if (ScriptMgr::CanTick())
 			{
 				FiberPool::Push([wasOpen] {
-					// These are the RDR2 native-menu open/close cues. Normal option
-					// selection/back still use SELECT/BACK in UIManager, so all four
-					// interactions have a distinct audible identity.
 					AUDIO::PLAY_SOUND_FRONTEND(wasOpen ? "MENU_CLOSE" : "MENU_ENTER", "HUD_PLAYER_MENU", 1, 0);
 				});
 			}
