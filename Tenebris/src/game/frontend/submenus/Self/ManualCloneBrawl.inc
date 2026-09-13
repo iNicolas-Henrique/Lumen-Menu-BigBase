@@ -340,7 +340,8 @@ void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);  // chase on foot
 	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);  // require LOS to shoot
 	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);  // proximity firing rate
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, false);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);  // CA_PERFECT_ACCURACY
+	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);           // AccuracyOffsetModifier
 
 	if (IsMeleeWeaponHash(weapon) || IsShotgunWeaponHash(weapon))
 	{
