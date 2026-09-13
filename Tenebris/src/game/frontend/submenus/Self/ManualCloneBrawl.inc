@@ -89,7 +89,7 @@ AggressivePerceptionState& GetAggressivePerception(int clone)
 			return state;
 	for (auto& state : g_AggressivePerception)
 	{
-		if (!state.Clone || !FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone))
+		if (!state.Clone || !FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
 		{
 			state = {};
 			state.Clone = clone;
@@ -109,13 +109,15 @@ CloneSupportState& GetCloneSupportState(int clone)
 			return state;
 	for (auto& state : g_CloneSupport)
 	{
-		if (!state.Clone || !FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone))
+		if (!state.Clone || !FindManagedClone(state.Clone) || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
 		{
+			DeleteSupportHorse(state);
 			state = {};
 			state.Clone = clone;
 			return state;
 		}
 	}
+	DeleteSupportHorse(g_CloneSupport[0]);
 	g_CloneSupport[0] = {};
 	g_CloneSupport[0].Clone = clone;
 	return g_CloneSupport[0];
@@ -334,14 +336,14 @@ void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 		return;
 	PED::SET_PED_COMBAT_ABILITY(clone, 3);
 	PED::SET_PED_ACCURACY(clone, IsBowWeaponHash(weapon) ? 100 : 96);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);   // dynamic strafe decisions
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);   // always fight
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 13, true);  // aggressive / advance
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);  // chase on foot
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);  // require LOS to shoot
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);  // proximity firing rate
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);  // CA_PERFECT_ACCURACY
-	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);           // AccuracyOffsetModifier
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 13, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);
+	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);
 
 	if (IsMeleeWeaponHash(weapon) || IsShotgunWeaponHash(weapon))
 	{
@@ -383,8 +385,6 @@ void StableEnsureCloneWeaponEquipped(int clone, Hash desiredWeapon)
 	const bool inCombat = PED::IS_PED_IN_COMBAT(clone, 0);
 	if (!inCombat)
 	{
-		// Never restart draw/holster animations while idle. This was the source
-		// of the old infinite weapon-stowing loop.
 		support.WeaponMismatchSince = {};
 		return;
 	}
@@ -422,7 +422,8 @@ int FindUnclaimedFreeHorse(int clone, int anchor)
 		const int horse = cached.Handle;
 		if (!horse || horse == clone || horse == anchor || cached.Player || cached.Dead || PED::IS_PED_HUMAN(horse) || !ENTITY::DOES_ENTITY_EXIST(horse))
 			continue;
-		if (!PED::_IS_MOUNT_SEAT_FREE(horse, -1) || IsHorseClaimedByAnotherClone(horse, clone))
+		const Hash model = ENTITY::GET_ENTITY_MODEL(horse);
+		if (!model || !PED::_IS_THIS_MODEL_A_HORSE(model) || !PED::_IS_MOUNT_SEAT_FREE(horse, -1) || IsHorseClaimedByAnotherClone(horse, clone))
 			continue;
 		const float d = DistanceSquared(clonePos, cached.Position);
 		if (d < bestSq)
@@ -524,7 +525,6 @@ int FindProfessionalBodyguardThreat(int clone, int owner, float radius)
 	bestDistanceSq *= bestDistanceSq;
 	int best{};
 
-	// Network players explicitly aiming at the protected anchor are immediate threats.
 	for (int id = 0; id < 32; ++id)
 	{
 		if (!NETWORK::NETWORK_IS_PLAYER_ACTIVE(id))
@@ -599,10 +599,6 @@ void MaintainProfessionalBodyguardFollow(int clone, int owner, Clock::time_point
 		nextHorse = now + kGuardHorseAcquireInterval;
 	}
 
-	// Preserve the old extreme catch-up behavior without making normal follow
-	// depend on LOS. At >420 m we avoid asking RDR2 to pathfind across half the map.
-	// Dismissed guards still travel normally; this only acts as the documented
-	// extreme fallback when their source player is exceptionally far away.
 	if (dSq > kGuardExtremeCatchupDistance * kGuardExtremeCatchupDistance && !PED::IS_PED_IN_COMBAT(clone, 0))
 	{
 		const Vector3 catchup = ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(anchor, sideOffset * 2.0f, backOffset * 2.0f, 0.25f);
@@ -721,8 +717,6 @@ void DeleteAllManagedClonesAndMounts()
 	{
 		if (managed.Ped && ENTITY::DOES_ENTITY_EXIST(managed.Ped))
 			ForceCleanupPedEntity(managed.Ped);
-		// Registry cleanup is unconditional. A remote/network entity that refuses
-		// deletion must never keep Tenebris at the 8-clone cap indefinitely.
 		managed.Ped = 0;
 	}
 	g_ManagedClones.clear();
