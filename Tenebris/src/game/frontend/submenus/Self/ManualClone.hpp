@@ -41,6 +41,34 @@ namespace YimMenu::Submenus::CloneNativeCompat
 		handler(&invoker.m_CallContext);
 		return true;
 	}
+
+	template <typename Ret, typename... Args>
+	inline Ret InvokeByHashResult(rage::scrNativeHash hash, Args&&... args)
+	{
+		std::size_t nativeIndex{};
+		bool found{};
+		for (; nativeIndex < g_Crossmap.size(); ++nativeIndex)
+		{
+			if (g_Crossmap[nativeIndex] == hash)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+			return Ret{};
+
+		auto handler = NativeInvoker::GetNativeHandler(static_cast<NativeIndex>(nativeIndex));
+		if (!handler)
+			return Ret{};
+
+		NativeInvoker invoker{};
+		invoker.BeginCall();
+		(invoker.PushArg(std::forward<Args>(args)), ...);
+		handler(&invoker.m_CallContext);
+		return invoker.GetReturnValue<Ret>();
+	}
 }
 
 // Compatibility overloads used only by ManualClone.cpp. The generated NativeDB
@@ -80,13 +108,16 @@ namespace PED
 
 namespace PLAYER
 {
-	// Local overload for the clone threat scan. The NativeDB snapshot's
-	// IS_PLAYER_TARGETTING_ENTITY signature does not match the two-argument call
-	// used here, while IS_PLAYER_FREE_AIMING_AT_ENTITY does. Keeping this as an
-	// overload avoids the global preprocessor alias that corrupted NativeIndex.
+	// RDR2's native takes a third BOOL parameter. The legacy clone threat scan
+	// uses a two-argument form, so keep that compatibility local and invoke the
+	// verified RDR2 native hash directly without depending on declaration order.
 	inline bool IS_PLAYER_TARGETTING_ENTITY(int player, int entity)
 	{
-		return IS_PLAYER_FREE_AIMING_AT_ENTITY(player, entity);
+		return YimMenu::Submenus::CloneNativeCompat::InvokeByHashResult<bool>(
+		    static_cast<rage::scrNativeHash>(0x27F89FDC16688A7AULL),
+		    player,
+		    entity,
+		    false);
 	}
 }
 
