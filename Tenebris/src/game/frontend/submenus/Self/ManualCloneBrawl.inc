@@ -548,9 +548,8 @@ int FindProfessionalBodyguardThreat(int clone, int owner, float radius)
 		const int ped = cached.Handle;
 		if (!ped || ped == anchor || ped == clone || cached.Dead || !PED::IS_PED_HUMAN(ped) || IsHostileCloneAlly(clone, ped))
 			continue;
-		const bool policeVisible = IsLawPed(ped) && (ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(clone, ped, 17) || ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(anchor, ped, 17));
 		const bool threatening = PED::IS_PED_IN_COMBAT(ped, anchor) || PED::IS_PED_IN_COMBAT(anchor, ped) || ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(anchor, ped, true, true);
-		if (!policeVisible && !threatening)
+		if (!threatening)
 			continue;
 		const float d = DistanceSquared(anchorPos, cached.Position);
 		if (d < bestDistanceSq)
