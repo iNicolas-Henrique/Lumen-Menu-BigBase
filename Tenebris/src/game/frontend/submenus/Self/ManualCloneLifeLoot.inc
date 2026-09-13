@@ -135,10 +135,8 @@ int GiveRareAmmoVerified(int owner, Hash ammoHash, int requestedAmount)
     const int before = std::max(0, WEAPON::GET_PED_AMMO_BY_TYPE(owner, ammoHash));
     int target = before + requestedAmount;
 
-    // The old implementation only asked the game to add 100 and then printed
-    // "100" regardless of what the ammo pool really accepted. Resolve the ammo
-    // type back to a weapon so GET_MAX_AMMO can clamp the requested target to the
-    // real capacity when that information is available.
+    // Resolve the ammo type back to a weapon so the intended +100 is clamped
+    // only by the actual in-game capacity instead of silently becoming +6.
     const Hash weaponType = WEAPON::_GET_WEAPON_TYPE_FROM_AMMO_TYPE(ammoHash);
     int maxAmmo{};
     if (weaponType && WEAPON::GET_MAX_AMMO(owner, &maxAmmo, weaponType) && maxAmmo >= before)
@@ -147,9 +145,6 @@ int GiveRareAmmoVerified(int owner, Hash ammoHash, int requestedAmount)
     if (target <= before)
         return 0;
 
-    // SET_PED_AMMO_BY_TYPE is deterministic for the local ammo pool. A small
-    // batched ADD fallback handles builds/session states that reject the direct
-    // set without creating a per-frame worker or any persistent polling.
     WEAPON::SET_PED_AMMO_BY_TYPE(owner, ammoHash, target);
     ScriptMgr::Yield(2ms);
 
@@ -193,7 +188,7 @@ int GiveMiracleTonicsVerified(int owner, int requestedAmount)
     }
 
     if (before < 0)
-        return requestedAmount; // Inventory API unavailable: preserve legacy behavior.
+        return requestedAmount;
 
     int bestAfter = before;
     for (int attempt = 0; attempt < 6; ++attempt)
@@ -301,9 +296,9 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             {
                 if (state.LastHorseAppearance != support.Horse)
                 {
-                    // MetaPed horses can exist and even accept a rider before their
-                    // drawable variation is finalized. Force the variation once per
-                    // assigned horse, then explicitly restore visibility/alpha.
+                    // MetaPed horses can exist and accept a rider before their
+                    // drawable variation is finalized. Finalize once, then keep
+                    // visibility/alpha/collision repaired by the low-rate supervisor.
                     PED::_SET_RANDOM_OUTFIT_VARIATION(support.Horse, true);
                     PED::_UPDATE_PED_VARIATION(support.Horse, false, true, true, true, false);
                     ENTITY::SET_ENTITY_VISIBLE(support.Horse, true);
@@ -311,9 +306,7 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
                     ENTITY::SET_ENTITY_COLLISION(support.Horse, true, true);
                     ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(support.Horse, true);
 
-                    // Dedicated horses used by a networked clone should not remain
-                    // local-only just because the fallback horse spawner was local.
-                    if (managed.Networked)
+                    if (managed.Networked && support.HorseOwned)
                     {
                         if (!NETWORK::NETWORK_GET_ENTITY_IS_NETWORKED(support.Horse))
                             NETWORK::NETWORK_REGISTER_ENTITY_AS_NETWORKED(support.Horse);
@@ -404,7 +397,16 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
         }
         else
         {
-            ENTITY::SET_ENTITY_HEALTH(clone, 0, 0);
+            // An external revival must not turn a hostile clone into an ally or
+            // force an artificial second death. ManagedClone keeps FrenzyNpcs as
+            // its mode, so reset only the incap state and let the normal hostile
+            // brain/relationship profile resume on the next low-frequency tick.
+            state.WasIncapacitated = false;
+            state.IncapacitatedAt = {};
+            state.ProfileApplied = false;
+            state.AimProfileApplied = false;
+            PED::SET_PED_CONFIG_FLAG(clone, kDisableAmbientPromptsFlag, false);
+            ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
         }
     }
 }
