@@ -28,8 +28,7 @@ bool AcquireRemoteCloneControl(int clone, bool networked)
 
 void TaskRemoteCloneMove(int clone, const Vector3& target, float speed)
 {
-	CloneNativeCompat::InvokeByHash(
-	    static_cast<rage::scrNativeHash>(0xD76B57B44F1E6F8BULL),
+	TASK::TASK_GO_STRAIGHT_TO_COORD(
 	    clone,
 	    target.x,
 	    target.y,
@@ -43,16 +42,12 @@ void TaskRemoteCloneMove(int clone, const Vector3& target, float speed)
 
 void TaskRemoteCloneJump(int clone)
 {
-	CloneNativeCompat::InvokeByHash(
-	    static_cast<rage::scrNativeHash>(0x0AE4086104E067B1ULL),
-	    clone,
-	    false);
+	TASK::TASK_JUMP(clone, false);
 }
 
 void TaskRemoteCloneShoot(int clone, const Vector3& target)
 {
-	CloneNativeCompat::InvokeByHash(
-	    static_cast<rage::scrNativeHash>(0x46A6CC01E0826106ULL),
+	TASK::TASK_SHOOT_AT_COORD(
 	    clone,
 	    target.x,
 	    target.y,
