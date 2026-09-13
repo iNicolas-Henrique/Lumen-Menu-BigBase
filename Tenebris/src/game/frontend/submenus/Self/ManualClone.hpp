@@ -78,10 +78,17 @@ namespace PED
 	}
 }
 
-// The generated PLAYER native in this NativeDB snapshot does not expose the
-// two-argument targeting form used by the clone threat scan. For that specific
-// scan, free-aim-at-entity is the equivalent supported predicate.
-#define IS_PLAYER_TARGETTING_ENTITY IS_PLAYER_FREE_AIMING_AT_ENTITY
+namespace PLAYER
+{
+	// Local overload for the clone threat scan. The NativeDB snapshot's
+	// IS_PLAYER_TARGETTING_ENTITY signature does not match the two-argument call
+	// used here, while IS_PLAYER_FREE_AIMING_AT_ENTITY does. Keeping this as an
+	// overload avoids the global preprocessor alias that corrupted NativeIndex.
+	inline bool IS_PLAYER_TARGETTING_ENTITY(int player, int entity)
+	{
+		return IS_PLAYER_FREE_AIMING_AT_ENTITY(player, entity);
+	}
+}
 
 namespace YimMenu::Submenus
 {
