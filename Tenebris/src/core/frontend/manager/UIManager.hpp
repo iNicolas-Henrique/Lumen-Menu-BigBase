@@ -2,6 +2,8 @@
 #include "Category.hpp"
 #include "Submenu.hpp"
 
+#include <array>
+
 namespace YimMenu
 {
 	class UIManager

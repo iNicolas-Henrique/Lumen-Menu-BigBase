@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20.x)
 
 project(Tenebris VERSION 0.0.1 DESCRIPTION "Tenebris, a beta-stage mod menu for Red Dead Redemption 2 and Red Dead Online, inspired by YimMenu, that protects against crashes and enhances your experience.")
 
+# CI build validation trigger
 # libs
 include(cmake/vulkan.cmake)
 include(cmake/async-logger.cmake)

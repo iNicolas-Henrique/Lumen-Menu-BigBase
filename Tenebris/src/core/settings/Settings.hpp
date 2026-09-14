@@ -1,6 +1,8 @@
 #pragma once
 #include "core/filemgr/File.hpp"
 
+#include <chrono>
+
 namespace YimMenu
 {
 	class IStateSerializer;
@@ -14,6 +16,7 @@ namespace YimMenu
 		bool m_InitialLoadDone;
 		nlohmann::json m_Json;
 		std::mutex m_Mutex;
+		std::chrono::steady_clock::time_point m_NextSaveAt{};
 
 	public:
 		Settings();
@@ -26,6 +29,11 @@ namespace YimMenu
 		static void Tick()
 		{
 			GetInstance().TickImpl();
+		}
+
+		static void Flush()
+		{
+			GetInstance().FlushImpl();
 		}
 
 		static void AddComponent(IStateSerializer* serializer)
@@ -58,6 +66,7 @@ namespace YimMenu
 
 		void InitializeImpl(File settingsFile);
 		void TickImpl();
+		void FlushImpl();
 		void AddComponentImpl(IStateSerializer* serializer);
 		void LoadComponentImpl(IStateSerializer* serializer);
 		void SaveComponentImpl(IStateSerializer* serializer);

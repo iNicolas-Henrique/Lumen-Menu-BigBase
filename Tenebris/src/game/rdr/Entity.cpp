@@ -56,18 +56,17 @@ namespace YimMenu
 	bool Entity::IsValid()
 	{
 		if (m_Handle)
-		{
-			// TODO: does this work? is this UB?
-			[[assume((IsValid(), IsValid() && m_Handle != 0))]]; // https://en.cppreference.com/w/cpp/language/attributes/assume
 			return ENTITY::DOES_ENTITY_EXIST(m_Handle);
-		}
-		else if (m_Pointer)
-		{
-			[[assume((IsValid(), IsValid() && m_Pointer != nullptr))]];
-			return true; // TODO: potential use after free
-		}
 
-		return false;
+		if (!m_Pointer || !Pointers.PtrToHandle)
+			return false;
+
+		const int handle = Pointers.PtrToHandle(m_Pointer);
+		if (!handle || !ENTITY::DOES_ENTITY_EXIST(handle))
+			return false;
+
+		m_Handle = handle;
+		return true;
 	}
 
 	bool Entity::IsPed()
