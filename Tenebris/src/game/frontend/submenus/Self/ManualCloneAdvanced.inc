@@ -6,51 +6,14 @@ struct CloneRuntimeState
 {
 	int Clone{};
 	bool ProfileApplied{};
-	bool VoiceApplied{};
-	int VoiceIndex{};
 	Vector3 LastIdlePosition{};
 	int StillChecks{};
 	int DamageTarget{};
 	int LastTargetHealth{};
 	Clock::time_point NextMovementCheck{};
-	Clock::time_point NextSpeech{};
 	Clock::time_point NextDamageCheck{};
 	Clock::time_point NextHorseVisibilityCheck{};
 };
-
-struct CloneVoiceProfile
-{
-	const char* Dictionary{};
-	const char* IdleLine{};
-	const char* CombatLine{};
-};
-
-struct CloneSpeechParams
-{
-	const char* IndexName{};
-	const char* DictionaryName{};
-	alignas(8) int Variation{};
-	alignas(8) Hash SpeechParamHash{};
-	alignas(8) int ListenerPed{};
-	alignas(8) int SyncOverNetwork{};
-	alignas(8) int V7{};
-	alignas(8) int V8{};
-};
-static_assert(sizeof(CloneSpeechParams) == 0x40);
-
-// Police/law voice dictionaries for hostile clones: Armadillo, Strawberry,
-// Saint Denis and Guarma/Fussar. With eight entries, the eight-clone cap can
-// keep distinct hostile voices whenever possible.
-constexpr std::array<CloneVoiceProfile, 8> kCloneVoices = {{
-    {"ARMA_SHERIFF", "BUMP", "CHALLENGE_THREATEN"},
-    {"0457_U_M_M_STRSHERRIFF_01", "CHAT_PATROL", "CHALLENGE_THREATEN_ARMED"},
-    {"0998_S_M_M_AMBIENTSDPOLICE_WHITE_01", "CHAT_PATROL", "ARRIVAL_COMBAT_NEUTRAL"},
-    {"1000_S_M_M_AMBIENTSDPOLICE_WHITE_03", "CHAT_PATROL", "CALL_FOR_SUPPORT"},
-    {"1001_S_M_M_AMBIENTSDPOLICE_WHITE_04", "CHAT_PATROL", "CHALLENGE_THREATEN"},
-    {"0760_S_M_M_FUSSARHENCHMAN_01_HISPANIC_01", "CHAT_PATROL", "CHALLENGE_THREATEN"},
-    {"0762_S_M_M_FUSSARHENCHMAN_01_HISPANIC_03", "CHAT_PATROL", "ARRIVAL_COMBAT_NEUTRAL"},
-    {"0763_S_M_M_FUSSARHENCHMAN_01_HISPANIC_04", "CHAT_PATROL", "CALL_FOR_SUPPORT_FAR"},
-}};
 
 std::array<CloneRuntimeState, kMaxActiveClones> g_CloneRuntime{};
 bool g_CloneSupervisorRunning{};
@@ -59,29 +22,6 @@ Hash g_HostileCloneRelationship{};
 Hash g_BodyguardCloneRelationship{};
 CloneOptions g_FreecamLiveOptions{};
 bool g_FreecamLiveOptionsValid{};
-
-int ChooseUniqueCloneVoiceIndex(int clone)
-{
-	std::array<bool, kCloneVoices.size()> used{};
-	for (const auto& state : g_CloneRuntime)
-	{
-		if (!state.Clone || state.Clone == clone || state.VoiceIndex < 0 || state.VoiceIndex >= static_cast<int>(kCloneVoices.size()))
-			continue;
-		auto* managed = FindManagedClone(state.Clone);
-		if (!managed || managed->Mode == CloneMode::Bodyguard || !ENTITY::DOES_ENTITY_EXIST(state.Clone) || ENTITY::IS_ENTITY_DEAD(state.Clone))
-			continue;
-		used[static_cast<std::size_t>(state.VoiceIndex)] = true;
-	}
-
-	const int start = std::abs(clone) % static_cast<int>(kCloneVoices.size());
-	for (int offset = 0; offset < static_cast<int>(kCloneVoices.size()); ++offset)
-	{
-		const int index = (start + offset) % static_cast<int>(kCloneVoices.size());
-		if (!used[static_cast<std::size_t>(index)])
-			return index;
-	}
-	return start;
-}
 
 CloneRuntimeState& GetCloneRuntimeState(int clone)
 {
@@ -94,15 +34,12 @@ CloneRuntimeState& GetCloneRuntimeState(int clone)
 		{
 			state = {};
 			state.Clone = clone;
-			state.VoiceIndex = ChooseUniqueCloneVoiceIndex(clone);
 			state.NextMovementCheck = Clock::now() + 1700ms;
-			state.NextSpeech = Clock::now() + std::chrono::seconds(4 + (std::abs(clone) % 6));
 			return state;
 		}
 	}
 	g_CloneRuntime[0] = {};
 	g_CloneRuntime[0].Clone = clone;
-	g_CloneRuntime[0].VoiceIndex = ChooseUniqueCloneVoiceIndex(clone);
 	return g_CloneRuntime[0];
 }
 
@@ -158,48 +95,6 @@ void ApplyRuntimeCloneProfile(const ManagedClone& managed, CloneRuntimeState& st
 	state.ProfileApplied = true;
 }
 
-void ApplyCloneVoice(const ManagedClone& managed, CloneRuntimeState& state)
-{
-	const int clone = managed.Ped;
-	if (managed.Mode == CloneMode::Bodyguard || state.VoiceApplied || !clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
-		return;
-	state.VoiceIndex = std::clamp(state.VoiceIndex, 0, static_cast<int>(kCloneVoices.size()) - 1);
-	AUDIO::SET_AMBIENT_VOICE_NAME(clone, kCloneVoices[static_cast<std::size_t>(state.VoiceIndex)].Dictionary);
-	state.VoiceApplied = true;
-}
-
-void PlayCloneSituationSpeech(const ManagedClone& managed, CloneRuntimeState& state, bool combat)
-{
-	const int clone = managed.Ped;
-	if (managed.Mode == CloneMode::Bodyguard || !clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone) ||
-	    PED::IS_PED_INCAPACITATED(clone) || PED::IS_PED_ON_MOUNT(clone) || IsMountPlanActive(clone))
-		return;
-	if (AUDIO::IS_AMBIENT_SPEECH_PLAYING(clone) || AUDIO::IS_SCRIPTED_SPEECH_PLAYING(clone))
-	{
-		state.NextSpeech = Clock::now() + 2s;
-		return;
-	}
-
-	ApplyCloneVoice(managed, state);
-	if (state.VoiceIndex < 0 || state.VoiceIndex >= static_cast<int>(kCloneVoices.size()))
-		return;
-	const auto& voice = kCloneVoices[static_cast<std::size_t>(state.VoiceIndex)];
-	if (!voice.Dictionary || !voice.IdleLine || !voice.CombatLine)
-		return;
-
-	CloneSpeechParams params{};
-	params.IndexName = combat ? voice.CombatLine : voice.IdleLine;
-	params.DictionaryName = voice.Dictionary;
-	params.Variation = 1;
-	params.SpeechParamHash = Joaat("SPEECH_PARAMS_FORCE");
-	params.ListenerPed = 0;
-	params.SyncOverNetwork = 0;
-	params.V7 = 1;
-	params.V8 = 0;
-	const bool played = AUDIO::PLAY_PED_AMBIENT_SPEECH_NATIVE(clone, reinterpret_cast<Any*>(&params));
-	state.NextSpeech = Clock::now() + std::chrono::seconds(played ? (combat ? RandomInt(7, 11) : RandomInt(11, 18)) : 4);
-}
-
 void MaintainHostileNaturalMovement(const ManagedClone& managed, CloneRuntimeState& state, Clock::time_point now)
 {
 	const int clone = managed.Ped;
@@ -217,7 +112,7 @@ void MaintainHostileNaturalMovement(const ManagedClone& managed, CloneRuntimeSta
 		return;
 	}
 
-	const bool inCombat = (target && IsAnyLiveHumanPedTarget(target, clone)) || PED::IS_PED_IN_COMBAT(clone, 0);
+	const bool inCombat = (target && IsAnyLiveDamageablePedTarget(target, clone)) || PED::IS_PED_IN_COMBAT(clone, 0);
 	if (inCombat)
 	{
 		state.StillChecks = 0;
@@ -251,7 +146,7 @@ void MaintainCloneDamageMultiplier(const ManagedClone& managed, CloneRuntimeStat
 	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone) || ENTITY::IS_ENTITY_DEAD(clone))
 		return;
 	const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(clone));
-	if (!IsAnyLiveHumanPedTarget(target, clone))
+	if (!IsAnyLiveDamageablePedTarget(target, clone))
 	{
 		state.DamageTarget = 0;
 		state.LastTargetHealth = 0;
@@ -280,15 +175,6 @@ void MaintainCloneDamageMultiplier(const ManagedClone& managed, CloneRuntimeStat
 			PED::APPLY_DAMAGE_TO_PED(target, extra, 0, kCloneHeadBone, clone);
 	}
 	state.LastTargetHealth = ENTITY::GET_ENTITY_HEALTH(target);
-}
-
-void MaintainCloneSpeech(const ManagedClone& managed, CloneRuntimeState& state, Clock::time_point now)
-{
-	if (managed.Mode == CloneMode::Bodyguard || now < state.NextSpeech || !managed.Ped || !ENTITY::DOES_ENTITY_EXIST(managed.Ped) || ENTITY::IS_ENTITY_DEAD(managed.Ped))
-		return;
-	const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(managed.Ped));
-	const bool combat = (target && IsAnyLiveHumanPedTarget(target, managed.Ped)) || PED::IS_PED_IN_COMBAT(managed.Ped, 0);
-	PlayCloneSituationSpeech(managed, state, combat);
 }
 
 void MaintainAssignedHorseVisibility(int clone, CloneRuntimeState& state, Clock::time_point now)
@@ -364,12 +250,9 @@ void StartCloneEnhancementSupervisor()
 				auto& state = GetCloneRuntimeState(managed.Ped);
 				if (!state.ProfileApplied)
 					ApplyRuntimeCloneProfile(managed, state, owner);
-				if (managed.Mode != CloneMode::Bodyguard && !state.VoiceApplied)
-					ApplyCloneVoice(managed, state);
 				MaintainAssignedHorseVisibility(managed.Ped, state, now);
 				MaintainHostileNaturalMovement(managed, state, now);
 				MaintainCloneDamageMultiplier(managed, state, now);
-				MaintainCloneSpeech(managed, state, now);
 			}
 			ScriptMgr::Yield(240ms);
 		}
