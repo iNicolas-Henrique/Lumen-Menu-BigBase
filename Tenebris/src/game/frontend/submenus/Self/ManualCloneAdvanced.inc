@@ -268,3 +268,76 @@ void ClearActiveCloneExtensionState()
 	g_BodyguardsDismissed = false;
 	g_BodyguardThreatCache = {};
 }
+
+// The legacy core still contains an eight-clone guard in SpawnManualCloneAt.
+// The active optimized editor deliberately bypasses that guard. The game itself
+// may still refuse PED creation when its own engine/network budgets are exhausted.
+void SpawnManualCloneAtUnlimited(CloneOptions options, const Vector3& spawn, float heading)
+{
+	PruneManagedClones(false);
+	auto self = Self::GetPed();
+	if (!self.IsValid() || self.GetHealth() <= 0)
+		return;
+	const int owner = self.GetHandle();
+	if (options.SourcePlayerId < 0)
+		options.SourcePlayerId = PLAYER::PLAYER_ID();
+	options.Health = std::clamp(options.Health, 50, 5000);
+	options.SeeingRange = std::clamp(options.SeeingRange, 20.0f, 500.0f);
+	options.WalkStyleIndex = std::clamp(options.WalkStyleIndex, 0, static_cast<int>(kCloneWalkStyles.size()) - 1);
+
+	const int sourcePed = ResolveSourcePed(options.SourcePlayerId);
+	if (!sourcePed)
+	{
+		Notifications::Show("Tenebris", Localization::IsPortuguese() ? "O jogador escolhido não está mais disponível na sessão." : "The selected player is no longer available in the session.", NotificationType::Warning, 2600);
+		return;
+	}
+	int clone = CreateCloneShell(options.SourcePlayerId, sourcePed, spawn, heading, options.Networked);
+	if (!clone)
+	{
+		Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Não foi possível criar o clone com segurança." : "Could not create the clone safely.", NotificationType::Warning, 2600);
+		return;
+	}
+
+	ENTITY::PLACE_ENTITY_ON_GROUND_PROPERLY(clone, true);
+	ENTITY::SET_ENTITY_MAX_HEALTH(clone, options.Health);
+	ENTITY::SET_ENTITY_HEALTH(clone, options.Health, 0);
+	ApplyPlayerPromptName(clone, options.SourcePlayerId);
+	ConfigureBleedout(clone);
+	ConfigureCloneLoot(clone);
+	ApplyCloneWalkStyle(clone, options.WalkStyleIndex);
+	options.WeaponIndex = std::clamp(options.WeaponIndex, 0, static_cast<int>(kCloneWeapons.size()) - 1);
+	const Hash weapon = EquipCloneWeapon(clone, options.WeaponIndex);
+	ScriptMgr::Yield();
+	StableEnsureCloneWeaponEquipped(clone, weapon);
+	ConfigureCloneCombat(clone, options.Mode, kCloneWeapons[options.WeaponIndex].HashName, options.SeeingRange);
+	ENTITY::CLEAR_ENTITY_LAST_DAMAGE_ENTITY(clone);
+
+	g_ManagedClones.push_back({clone, options.SourcePlayerId, options.Mode, options.Networked, {}});
+	g_ManagedClones.back().Weapon = weapon;
+	g_NextPedCacheRefresh = {};
+	++g_TotalSpawned;
+	if (g_TotalSpawned % 5 == 0)
+		PruneManagedClones(true);
+	FiberPool::Push([clone, owner, options, weapon] { RunCloneBrain(clone, owner, options, weapon); });
+
+	const char* sourceName = PLAYER::GET_PLAYER_NAME(options.SourcePlayerId);
+	std::string msg = Localization::IsPortuguese() ? (options.Networked ? "Clone de rede criado" : "Clone local criado") : (options.Networked ? "Network clone created" : "Local clone created");
+	if (sourceName && *sourceName)
+		msg += std::string(" - ") + sourceName;
+	Notifications::Show("Tenebris", msg, NotificationType::Success, 1800);
+}
+
+void SpawnManualCloneNearPlayerUnlimited(CloneOptions options)
+{
+	auto self = Self::GetPed();
+	if (!self.IsValid())
+		return;
+	const int handle = self.GetHandle();
+	SpawnManualCloneAtUnlimited(options,
+		ENTITY::GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(handle, 0.0f, 3.0f, 0.25f),
+		ENTITY::GET_ENTITY_HEADING(handle));
+}
+
+// Redirect only the active editor code that is parsed after this include. The
+// legacy implementation above remains untouched but is not the exposed menu.
+#define SpawnManualCloneNearPlayer(options) SpawnManualCloneNearPlayerUnlimited((options))
