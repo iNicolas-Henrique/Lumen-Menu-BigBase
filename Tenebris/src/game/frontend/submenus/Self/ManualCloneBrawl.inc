@@ -40,6 +40,7 @@ struct CloneSupportState
 	int Horse{};
 	bool HorseOwned{};
 	Hash DesiredWeapon{};
+	Hash AppliedCombatProfileWeapon{};
 	Clock::time_point WeaponMismatchSince{};
 	Clock::time_point NextWeaponCorrection{};
 	Clock::time_point NextHorseAttempt{};
@@ -345,40 +346,189 @@ bool IsSidearmWeaponHash(Hash weapon)
 	return false;
 }
 
+bool IsRepeaterWeaponHash(Hash weapon)
+{
+	return weapon == Joaat("WEAPON_REPEATER_CARBINE") || weapon == Joaat("WEAPON_REPEATER_EVANS") ||
+		weapon == Joaat("WEAPON_REPEATER_HENRY") || weapon == Joaat("WEAPON_REPEATER_WINCHESTER");
+}
+
+bool IsRifleWeaponHash(Hash weapon)
+{
+	return weapon == Joaat("WEAPON_RIFLE_BOLTACTION") || weapon == Joaat("WEAPON_RIFLE_SPRINGFIELD") ||
+		weapon == Joaat("WEAPON_RIFLE_VARMINT") || weapon == Joaat("WEAPON_RIFLE_ELEPHANT");
+}
+
 void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 {
 	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
 		return;
+
+	// Keep our existing target selection/brain untouched. These settings only
+	// tune how RDR2's native combat task behaves after the clone already has a target.
+	auto& support = GetCloneSupportState(clone);
+	if (support.AppliedCombatProfileWeapon == weapon && weapon)
+		return;
+	support.AppliedCombatProfileWeapon = weapon;
+
 	PED::SET_PED_COMBAT_ABILITY(clone, 3);
 	PED::SET_PED_ACCURACY(clone, IsBowWeaponHash(weapon) ? 100 : 96);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 13, true);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);
-	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);
 
-	if (IsMeleeWeaponHash(weapon) || IsShotgunWeaponHash(weapon))
+	// Preserve the proven baseline that the clone brain already used.
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);   // strafe based on target proximity
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);   // always fight
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 13, true);  // cover search arc away from target
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);  // chase target on foot
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);  // existing Tenebris behavior; semantics unresolved
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);  // proximity firing rate
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);  // perfect accuracy
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 58, true);  // never flee from combat
+	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);           // no artificial accuracy offset
+
+	// Attributes controlled by the weapon profile. Reset first so a future
+	// weapon change cannot leave stale shotgun/sniper behavior on the same clone.
+	constexpr int kProfileAttributes[] = {0, 8, 12, 16, 28, 31, 42, 43, 44, 46, 47, 50, 71};
+	for (const int attribute : kProfileAttributes)
+		PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, false);
+
+	auto setAttribute = [clone](int attribute) {
+		PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, true);
+	};
+	auto setFloats = [clone](float maxShootingDistance,
+	                        float timeBetweenBurstsInCover,
+	                        float strafeChance,
+	                        float minimumDistance,
+	                        float optimalCoverDistance,
+	                        float crouchChance,
+	                        float hipFireChance,
+	                        float minTimeBeforeCharge,
+	                        float standAndFireDistance,
+	                        float minimumInCoverDistance) {
+		PED::SET_COMBAT_FLOAT(clone, 2, maxShootingDistance);
+		PED::SET_COMBAT_FLOAT(clone, 3, timeBetweenBurstsInCover);
+		PED::SET_COMBAT_FLOAT(clone, 5, strafeChance);
+		PED::SET_COMBAT_FLOAT(clone, 13, minimumDistance);
+		PED::SET_COMBAT_FLOAT(clone, 17, optimalCoverDistance);
+		PED::SET_COMBAT_FLOAT(clone, 28, crouchChance);
+		PED::SET_COMBAT_FLOAT(clone, 39, hipFireChance);
+		PED::SET_COMBAT_FLOAT(clone, 47, minTimeBeforeCharge);
+		PED::SET_COMBAT_FLOAT(clone, 48, standAndFireDistance);
+		PED::SET_COMBAT_FLOAT(clone, 54, minimumInCoverDistance);
+	};
+
+	if (IsMeleeWeaponHash(weapon))
 	{
+		// Melee: commit to the chase and close distance instead of looking for cover.
+		setAttribute(8);
+		setAttribute(28);
+		setAttribute(43);
+		setAttribute(46);
+		setAttribute(50);
+		setAttribute(71);
 		PED::SET_PED_COMBAT_RANGE(clone, 0);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
+		setFloats(8.0f, 0.25f, 0.85f, 0.0f, 0.0f, 0.0f, 0.0f, 0.20f, 0.0f, 0.0f);
 	}
-	else if (IsBowWeaponHash(weapon) || IsSniperWeaponHash(weapon))
+	else if (IsShotgunWeaponHash(weapon))
 	{
+		// Shotgun: fast aggressive pushes, flanks and high close-range hip-fire use.
+		setAttribute(8);
+		setAttribute(16);
+		setAttribute(28);
+		setAttribute(42);
+		setAttribute(43);
+		setAttribute(50);
+		setAttribute(71);
+		PED::SET_PED_COMBAT_RANGE(clone, 0);
+		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
+		setFloats(55.0f, 0.75f, 0.85f, 3.0f, 10.0f, 0.08f, 0.90f, 0.80f, 14.0f, 4.0f);
+	}
+	else if (IsSniperWeaponHash(weapon))
+	{
+		// Sniper: preserve distance, favor cover/tactical positions and avoid rushing.
+		setAttribute(0);
+		setAttribute(16);
+		setAttribute(31);
+		setAttribute(43);
+		setAttribute(44);
+		setAttribute(47);
 		PED::SET_PED_COMBAT_RANGE(clone, 3);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
+		setFloats(280.0f, 1.60f, 0.25f, 45.0f, 58.0f, 0.78f, 0.0f, 7.0f, 48.0f, 24.0f);
+	}
+	else if (IsBowWeaponHash(weapon))
+	{
+		// Bow: mobile long-range fighter with cover, flanking and target spacing.
+		setAttribute(0);
+		setAttribute(8);
+		setAttribute(16);
+		setAttribute(31);
+		setAttribute(42);
+		setAttribute(43);
+		setAttribute(44);
+		setAttribute(47);
+		PED::SET_PED_COMBAT_RANGE(clone, 3);
+		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
+		setFloats(140.0f, 1.25f, 0.45f, 24.0f, 34.0f, 0.62f, 0.0f, 3.0f, 32.0f, 14.0f);
 	}
 	else if (IsSidearmWeaponHash(weapon))
 	{
+		// Revolvers/pistols: active strafing, short-medium cover and opportunistic flanks.
+		setAttribute(0);
+		setAttribute(8);
+		setAttribute(12);
+		setAttribute(16);
+		setAttribute(42);
+		setAttribute(43);
+		setAttribute(44);
+		setAttribute(47);
 		PED::SET_PED_COMBAT_RANGE(clone, 1);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
+		setFloats(85.0f, 0.80f, 0.90f, 7.0f, 18.0f, 0.20f, 0.72f, 1.50f, 20.0f, 6.0f);
+	}
+	else if (IsRepeaterWeaponHash(weapon))
+	{
+		// Repeaters: balanced rifleman behavior with cover, flanks and sustained pressure.
+		setAttribute(0);
+		setAttribute(8);
+		setAttribute(12);
+		setAttribute(16);
+		setAttribute(31);
+		setAttribute(42);
+		setAttribute(43);
+		setAttribute(44);
+		setAttribute(47);
+		PED::SET_PED_COMBAT_RANGE(clone, 2);
+		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
+		setFloats(145.0f, 1.00f, 0.65f, 16.0f, 28.0f, 0.42f, 0.35f, 2.50f, 28.0f, 10.0f);
+	}
+	else if (IsRifleWeaponHash(weapon))
+	{
+		// Rifles: more deliberate spacing and cover than repeaters, without sniper passivity.
+		setAttribute(0);
+		setAttribute(8);
+		setAttribute(12);
+		setAttribute(16);
+		setAttribute(31);
+		setAttribute(42);
+		setAttribute(43);
+		setAttribute(44);
+		setAttribute(47);
+		PED::SET_PED_COMBAT_RANGE(clone, 2);
+		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
+		setFloats(180.0f, 1.20f, 0.50f, 24.0f, 36.0f, 0.58f, 0.18f, 3.50f, 34.0f, 14.0f);
 	}
 	else
 	{
+		// Unknown/custom weapon: conservative balanced profile rather than changing tasks.
+		setAttribute(0);
+		setAttribute(8);
+		setAttribute(16);
+		setAttribute(42);
+		setAttribute(43);
+		setAttribute(44);
 		PED::SET_PED_COMBAT_RANGE(clone, 2);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
+		setFloats(120.0f, 1.00f, 0.60f, 14.0f, 26.0f, 0.35f, 0.30f, 2.50f, 26.0f, 10.0f);
 	}
 }
 
