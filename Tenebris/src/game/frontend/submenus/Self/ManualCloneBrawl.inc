@@ -92,7 +92,7 @@ bool IsAnyLiveDamageablePedTarget(int candidate, int clone)
 	// Shopkeepers and other protected ambient peds are made non-damageable by
 	// the game. Never select them: TASK_COMBAT_PED would otherwise keep trying
 	// to kill an entity that the engine refuses to damage.
-	if (!ENTITY::GET_ENTITY_CAN_BE_DAMAGED(candidate))
+	if (!ENTITY::_GET_ENTITY_CAN_BE_DAMAGED(candidate))
 		return false;
 	return true;
 }
