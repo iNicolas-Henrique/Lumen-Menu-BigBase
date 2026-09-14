@@ -8,8 +8,12 @@ constexpr float kAggressiveVerticalTanSq = 0.7040882f;   // ~80 degree vertical 
 constexpr std::size_t kAggressiveLosCandidateCount = 5;
 constexpr auto kAggressiveTargetMemory = 550ms;
 constexpr auto kAggressiveMinScanInterval = 520ms;
+constexpr auto kOcclusionSearchDelay = 350ms;
+constexpr auto kOcclusionMoveRefresh = 450ms;
 constexpr float kAggressiveSwitchMargin = 0.14f;
 constexpr float kAggressiveMemoryLeash = 1.20f;
+constexpr float kShotgunRushDistance = 10.0f;
+constexpr float kShotgunRushStopRange = 6.0f;
 
 constexpr float kGuardHorseSearchRadius = 110.0f;
 constexpr float kGuardExtremeCatchupDistance = 420.0f;
@@ -30,7 +34,10 @@ struct AggressivePerceptionState
 	int Target{};
 	float TargetScore{};
 	Clock::time_point LastVisible{};
+	Clock::time_point LostLosSince{};
+	Clock::time_point NextSearchMove{};
 	Clock::time_point NextScan{};
+	Vector3 LastVisiblePosition{};
 };
 
 struct CloneSupportState
@@ -58,6 +65,13 @@ std::vector<CloneSupportState> g_CloneSupport{};
 BodyguardThreatCache g_BodyguardThreatCache{};
 
 void DeleteSupportHorse(CloneSupportState& state);
+bool IsMeleeWeaponHash(Hash weapon);
+bool IsShotgunWeaponHash(Hash weapon);
+bool IsBowWeaponHash(Hash weapon);
+bool IsSniperWeaponHash(Hash weapon);
+bool IsSidearmWeaponHash(Hash weapon);
+bool IsRepeaterWeaponHash(Hash weapon);
+bool IsRifleWeaponHash(Hash weapon);
 
 bool IsLawPed(int ped)
 {
@@ -119,6 +133,68 @@ AggressivePerceptionState& GetAggressivePerception(int clone)
 	state.Clone = clone;
 	state.NextScan = Clock::now() + std::chrono::milliseconds((std::abs(clone) % 5) * 73);
 	return state;
+}
+
+std::chrono::milliseconds TargetLossGraceForWeapon(Hash weapon)
+{
+	if (IsShotgunWeaponHash(weapon) || IsMeleeWeaponHash(weapon))
+		return 1800ms;
+	if (IsSidearmWeaponHash(weapon))
+		return 2300ms;
+	if (IsRepeaterWeaponHash(weapon))
+		return 2600ms;
+	if (IsRifleWeaponHash(weapon) || IsBowWeaponHash(weapon))
+		return 3200ms;
+	if (IsSniperWeaponHash(weapon))
+		return 3800ms;
+	return 2500ms;
+}
+
+bool HasCloneLineOfSight(int clone, int target)
+{
+	return clone && target && ENTITY::DOES_ENTITY_EXIST(clone) && ENTITY::DOES_ENTITY_EXIST(target) &&
+		ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(clone, target, 17);
+}
+
+Hash ManagedCloneWeapon(int clone)
+{
+	if (auto* managed = FindManagedClone(clone))
+		return managed->Weapon;
+	return 0;
+}
+
+bool IsCloneTargetValidForBrain(int candidate, int clone)
+{
+	if (!IsAnyLiveDamageablePedTarget(candidate, clone))
+		return false;
+
+	const auto now = Clock::now();
+	auto& memory = GetAggressivePerception(clone);
+	if (HasCloneLineOfSight(clone, candidate))
+	{
+		memory.Target = candidate;
+		memory.LastVisible = now;
+		memory.LostLosSince = {};
+		memory.NextSearchMove = {};
+		memory.LastVisiblePosition = ENTITY::GET_ENTITY_COORDS(candidate, true, false);
+		return true;
+	}
+
+	if (memory.Target != candidate)
+	{
+		memory.Target = candidate;
+		memory.TargetScore = 0.0f;
+		memory.LastVisible = now;
+		memory.LostLosSince = now;
+		memory.NextSearchMove = {};
+		memory.LastVisiblePosition = ENTITY::GET_ENTITY_COORDS(candidate, true, false);
+	}
+	else if (memory.LostLosSince == Clock::time_point{})
+	{
+		memory.LostLosSince = now;
+	}
+
+	return now - memory.LostLosSince <= TargetLossGraceForWeapon(ManagedCloneWeapon(clone));
 }
 
 CloneSupportState& GetCloneSupportState(int clone)
@@ -228,8 +304,14 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 	radius = std::clamp(radius, 20.0f, 500.0f);
 	const auto now = Clock::now();
 	auto& memory = GetAggressivePerception(clone);
-	if (now < memory.NextScan && IsAnyLiveDamageablePedTarget(memory.Target, clone))
+	if (now < memory.NextScan && IsAnyLiveDamageablePedTarget(memory.Target, clone) && HasCloneLineOfSight(clone, memory.Target))
+	{
+		memory.LastVisible = now;
+		memory.LostLosSince = {};
+		memory.NextSearchMove = {};
+		memory.LastVisiblePosition = ENTITY::GET_ENTITY_COORDS(memory.Target, true, false);
 		return memory.Target;
+	}
 	memory.NextScan = now + kAggressiveMinScanInterval + std::chrono::milliseconds((std::abs(clone) % 4) * 31);
 
 	const Vector3 origin = ENTITY::GET_ENTITY_COORDS(clone, true, false);
@@ -283,7 +365,7 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 	{
 		if (!candidate.Ped)
 			continue;
-		if (ENTITY::HAS_ENTITY_CLEAR_LOS_TO_ENTITY(clone, candidate.Ped, 17))
+		if (HasCloneLineOfSight(clone, candidate.Ped))
 		{
 			visibleTarget = candidate.Ped;
 			visibleScore = candidate.Score;
@@ -293,8 +375,9 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 
 	if (visibleTarget)
 	{
-		const bool keepCurrent = IsAnyLiveDamageablePedTarget(memory.Target, clone) &&
-			memory.Target != visibleTarget && memory.TargetScore + kAggressiveSwitchMargin >= visibleScore &&
+		const bool currentVisible = IsAnyLiveDamageablePedTarget(memory.Target, clone) && HasCloneLineOfSight(clone, memory.Target);
+		const bool keepCurrent = currentVisible && memory.Target != visibleTarget &&
+			memory.TargetScore + kAggressiveSwitchMargin >= visibleScore &&
 			now - memory.LastVisible <= kAggressiveTargetMemory;
 		if (!keepCurrent)
 		{
@@ -302,17 +385,25 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 			memory.TargetScore = visibleScore;
 		}
 		memory.LastVisible = now;
+		memory.LostLosSince = {};
+		memory.NextSearchMove = {};
+		memory.LastVisiblePosition = ENTITY::GET_ENTITY_COORDS(memory.Target, true, false);
 		return memory.Target;
 	}
 
-	if (IsAnyLiveDamageablePedTarget(memory.Target, clone) && now - memory.LastVisible <= kAggressiveTargetMemory)
+	if (IsAnyLiveDamageablePedTarget(memory.Target, clone))
 	{
+		if (memory.LostLosSince == Clock::time_point{})
+			memory.LostLosSince = now;
 		const float leash = radius * kAggressiveMemoryLeash;
-		if (DistanceSquared(origin, ENTITY::GET_ENTITY_COORDS(memory.Target, true, false)) <= leash * leash)
+		if (now - memory.LostLosSince <= TargetLossGraceForWeapon(ManagedCloneWeapon(clone)) &&
+			DistanceSquared(origin, ENTITY::GET_ENTITY_COORDS(memory.Target, true, false)) <= leash * leash)
 			return memory.Target;
 	}
 	memory.Target = 0;
 	memory.TargetScore = 0.0f;
+	memory.LostLosSince = {};
+	memory.NextSearchMove = {};
 	return 0;
 }
 
@@ -412,10 +503,13 @@ void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 	}
 	else if (IsShotgunWeaponHash(weapon))
 	{
+		// Shotguns are explicitly close-quarters: sprint into lethal range first,
+		// then let TASK_COMBAT_PED fire. The low native shooting distance prevents
+		// the stock combat brain from turning the shotgun into a long-range rifle.
 		for (int attr : {8, 16, 28, 42, 43, 50, 71}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 0);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
-		setFloats(55.0f, 0.75f, 0.85f, 3.0f, 10.0f, 0.08f, 0.90f, 0.80f, 14.0f, 4.0f);
+		setFloats(11.0f, 0.45f, 0.95f, 0.0f, 4.0f, 0.0f, 1.0f, 0.15f, 7.0f, 0.0f);
 	}
 	else if (IsSniperWeaponHash(weapon))
 	{
@@ -786,9 +880,78 @@ void TaskProfessionalCloneCombat(int clone, int target, Hash desiredWeapon)
 {
 	if (!IsAnyLiveDamageablePedTarget(target, clone))
 		return;
+
+	const auto now = Clock::now();
+	auto& memory = GetAggressivePerception(clone);
+	const bool hasLos = HasCloneLineOfSight(clone, target);
+	if (hasLos)
+	{
+		memory.Target = target;
+		memory.LastVisible = now;
+		memory.LostLosSince = {};
+		memory.NextSearchMove = {};
+		memory.LastVisiblePosition = ENTITY::GET_ENTITY_COORDS(target, true, false);
+	}
+	else
+	{
+		if (memory.Target != target)
+		{
+			memory.Target = target;
+			memory.TargetScore = 0.0f;
+			memory.LastVisible = now;
+			memory.LostLosSince = now;
+			memory.NextSearchMove = {};
+			memory.LastVisiblePosition = ENTITY::GET_ENTITY_COORDS(target, true, false);
+		}
+		else if (memory.LostLosSince == Clock::time_point{})
+		{
+			memory.LostLosSince = now;
+		}
+
+		const auto lostFor = now - memory.LostLosSince;
+		if (lostFor > TargetLossGraceForWeapon(desiredWeapon))
+			return;
+
+		// Brief obstructions are ignored. After that, stop feeding the combat task
+		// the hidden entity and move only toward the last actually known position.
+		// This prevents continuous wall-aiming without making the clone instantly
+		// forget someone who crossed behind a post or doorway.
+		if (lostFor >= kOcclusionSearchDelay)
+		{
+			StableEnsureCloneWeaponEquipped(clone, desiredWeapon);
+			ApplyProfessionalCombatProfile(clone, desiredWeapon);
+			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false);
+			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, IsShotgunWeaponHash(desiredWeapon) ? 1.35f : 1.10f);
+			if (now >= memory.NextSearchMove)
+			{
+				const Vector3 search = memory.LastVisiblePosition;
+				TASK::TASK_GO_STRAIGHT_TO_COORD(clone, search.x, search.y, search.z,
+					IsShotgunWeaponHash(desiredWeapon) ? 4.0f : 2.5f,
+					700, 1.5f, 0.0f, 0);
+				memory.NextSearchMove = now + kOcclusionMoveRefresh;
+			}
+		}
+		return;
+	}
+
 	StableEnsureCloneWeaponEquipped(clone, desiredWeapon);
 	ApplyProfessionalCombatProfile(clone, desiredWeapon);
 	PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(clone, false);
+
+	if (IsShotgunWeaponHash(desiredWeapon))
+	{
+		const Vector3 clonePos = ENTITY::GET_ENTITY_COORDS(clone, true, false);
+		const Vector3 targetPos = ENTITY::GET_ENTITY_COORDS(target, true, false);
+		if (DistanceSquared(clonePos, targetPos) > kShotgunRushDistance * kShotgunRushDistance)
+		{
+			// Do not stop at long range and aim. Sprint into point-blank range first.
+			PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.40f);
+			TASK::TASK_GO_STRAIGHT_TO_COORD(clone, targetPos.x, targetPos.y, targetPos.z,
+				4.2f, 700, kShotgunRushStopRange, 0.0f, 0);
+			return;
+		}
+	}
+
 	PED::SET_PED_MOVE_RATE_OVERRIDE(clone, 1.0f);
 	TASK::TASK_LOOK_AT_ENTITY(clone, target, 1200, 0, 0, 0);
 	TASK::TASK_COMBAT_PED(clone, target, 0, 16);
@@ -829,7 +992,7 @@ void RunSessionCloneBrawl(CloneOptions)
 }
 
 #define FindNearestNpcTarget(clone, owner, radius) FindProfessionalVisibleCloneTarget((clone), (radius))
-#define IsValidNpcTarget(candidate, clone, owner) IsAnyLiveDamageablePedTarget((candidate), (clone))
+#define IsValidNpcTarget(candidate, clone, owner) IsCloneTargetValidForBrain((candidate), (clone))
 #define TaskVanillaCombat(clone, target, owner, desiredWeapon) TaskProfessionalCloneCombat((clone), (target), (desiredWeapon))
 #define EnsureCloneWeaponEquipped(clone, desiredWeapon) StableEnsureCloneWeaponEquipped((clone), (desiredWeapon))
 #define FindBodyguardThreat(clone, owner, radius) FindProfessionalBodyguardThreat((clone), (owner), (radius))
