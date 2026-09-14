@@ -1,5 +1,4 @@
 #include "ManualClone.hpp"
-#include "core/frontend/manager/AdvancedEditor.hpp"
 #include "util/Rewards.hpp"
 
 #define ManualCloneItem ManualCloneItemLegacy
@@ -62,8 +61,8 @@ namespace YimMenu::Submenus
 			CloneMode Mode{CloneMode::Bodyguard};
 		};
 
-		std::array<BodyguardMountMirrorState, kMaxActiveClones> g_BodyguardMountMirror{};
-		std::array<CloneRadarBlipState, kMaxActiveClones> g_CloneRadarBlips{};
+		std::vector<BodyguardMountMirrorState> g_BodyguardMountMirror{};
+		std::vector<CloneRadarBlipState> g_CloneRadarBlips{};
 
 #include "ManualCloneLifeLoot.inc"
 #include "ManualCloneAdvanced.inc"
@@ -110,20 +109,35 @@ namespace YimMenu::Submenus
 					continue;
 				bool tracked{};
 				for (const auto& state : g_CloneRadarBlips)
-					if (state.Clone == managed.Ped) { tracked = true; break; }
+				{
+					if (state.Clone == managed.Ped)
+					{
+						tracked = true;
+						break;
+					}
+				}
 				if (tracked)
 					continue;
+
+				CloneRadarBlipState* slot{};
 				for (auto& state : g_CloneRadarBlips)
 				{
-					if (state.Clone)
-						continue;
-					state.Clone = managed.Ped;
-					state.Mode = managed.Mode;
-					state.Blip = CreateCloneRadarBlip(managed.Ped, managed.Mode);
-					if (!state.Blip)
-						state = {};
-					break;
+					if (!state.Clone)
+					{
+						slot = &state;
+						break;
+					}
 				}
+				if (!slot)
+				{
+					g_CloneRadarBlips.emplace_back();
+					slot = &g_CloneRadarBlips.back();
+				}
+				slot->Clone = managed.Ped;
+				slot->Mode = managed.Mode;
+				slot->Blip = CreateCloneRadarBlip(managed.Ped, managed.Mode);
+				if (!slot->Blip)
+					*slot = {};
 			}
 		}
 
@@ -141,9 +155,9 @@ namespace YimMenu::Submenus
 					return state;
 				}
 			}
-			g_BodyguardMountMirror[0] = {};
-			g_BodyguardMountMirror[0].Clone = clone;
-			return g_BodyguardMountMirror[0];
+			g_BodyguardMountMirror.emplace_back();
+			g_BodyguardMountMirror.back().Clone = clone;
+			return g_BodyguardMountMirror.back();
 		}
 
 		void SyncBodyguardMountState(int clone, int owner, bool ownerMounted, Clock::time_point now)
@@ -200,9 +214,6 @@ namespace YimMenu::Submenus
 		{
 			while (true)
 			{
-				// Nothing in this controller is needed until at least one managed
-				// clone exists. Keeping the editor-open path free of game-native work
-				// also avoids the old crash surface when simply entering CLONE MANUAL.
 				if (g_ManagedClones.empty())
 				{
 					ScriptMgr::Yield(700ms);
@@ -248,10 +259,9 @@ namespace YimMenu::Submenus
 			DeleteAllManagedClonesAndMounts();
 			for (auto& state : g_CloneRadarBlips)
 				RemoveCloneRadarBlip(state);
-			for (auto& state : g_BodyguardMountMirror)
-				state = {};
-			for (auto& state : g_CloneLifeLoot)
-				state = {};
+			g_CloneRadarBlips.clear();
+			g_BodyguardMountMirror.clear();
+			g_CloneLifeLoot.clear();
 			ClearActiveCloneExtensionState();
 		}
 
@@ -309,12 +319,6 @@ namespace YimMenu::Submenus
 		public:
 			void Draw() override
 			{
-				if (AdvancedEditor::IsDetachedMode())
-				{
-					g_FreecamLiveOptions = GetOptions();
-					g_FreecamLiveOptionsValid = true;
-				}
-
 				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Criar clone inteligente" : "Create smart clone");
 				ImGui::Spacing();
 				ImGui::TextUnformatted(Localization::IsPortuguese() ? "Jogador / aparência" : "Player / appearance");
@@ -410,16 +414,9 @@ namespace YimMenu::Submenus
 					EnsureCloneControllersStarted();
 					FiberPool::Push([options] { PruneManagedClones(true); SpawnManualCloneNearPlayer(options); });
 				}
-				if (ImGui::Button(Localization::IsPortuguese() ? "FREECAM MULTI-SPAWN" : "FREECAM MULTI-SPAWN", ImVec2(-1.0f, 0.0f)))
-				{
-					const CloneOptions options = GetOptions();
-					EnsureCloneControllersStarted();
-					FiberPool::Push([options] { RunCloneSpawnFreecamInteractive(options); });
-				}
-				ImGui::TextWrapped(Localization::IsPortuguese() ? "Na Freecam o editor fica preso à direita. Mouse sobre o painel edita; fora dele a câmera continua livre. ENTER cria clone e BACK sai." : "In Freecam the editor stays docked right. Mouse over it edits; outside it the camera stays free. ENTER spawns and BACK exits.");
 				if (ImGui::Button(Localization::IsPortuguese() ? "APAGAR TODOS OS CLONES" : "DELETE ALL CLONES", ImVec2(-1.0f, 0.0f)))
 					FiberPool::Push([] { DeleteAllClonesRobust(); });
-				ImGui::Text("%s: %zu / %zu", Localization::IsPortuguese() ? "Clones ativos" : "Active clones", ActiveCloneCount(), kMaxActiveClones);
+				ImGui::Text("%s: %zu", Localization::IsPortuguese() ? "Clones ativos" : "Active clones", ActiveCloneCount());
 			}
 
 			std::string_view GetMenuLabel() const override { return Localization::IsPortuguese() ? "CLONE MANUAL" : "MANUAL CLONE"; }
