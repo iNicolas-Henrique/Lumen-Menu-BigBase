@@ -176,7 +176,7 @@ int GiveMiracleTonicsVerified(int owner, int requestedAmount)
         return 0;
 
     constexpr Hash miracleTonicHash = "CONSUMABLE_TONIC"_J;
-    const Rewards::RewardInfo miracleTonic{0, miracleTonicHash, "Miracle Tonic"};
+    const Rewards::RewardInfo miracleTonic{0, static_cast<joaat_t>(miracleTonicHash), "Miracle Tonic"};
     const int before = GetInventoryItemCountForPed(owner, miracleTonicHash);
 
     for (int i = 0; i < requestedAmount; ++i)
@@ -239,7 +239,7 @@ void MaintainCloneHeadFocus(const ManagedClone& managed, CloneLifeLootState& sta
     }
 
     const int target = static_cast<int>(PED::GET_CURRENT_TARGET_FOR_PED(clone));
-    if (!IsAnyLiveHumanPedTarget(target, clone))
+    if (!IsAnyLiveDamageablePedTarget(target, clone))
     {
         state.AimTarget = 0;
         state.LastAimTargetHealth = 0;
