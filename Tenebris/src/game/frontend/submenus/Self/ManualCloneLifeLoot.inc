@@ -30,7 +30,7 @@ constexpr float kCloneLootInteractionRadius = 3.25f;
 constexpr float kCloneLootFallbackRadius = 1.65f;
 constexpr Hash kCloneLootAddReason = 0x2CD419DC;
 
-std::array<CloneLifeLootState, kMaxActiveClones> g_CloneLifeLoot{};
+std::vector<CloneLifeLootState> g_CloneLifeLoot{};
 
 CloneLifeLootState& GetCloneLifeLootState(int clone, CloneMode mode)
 {
@@ -56,12 +56,13 @@ CloneLifeLootState& GetCloneLifeLootState(int clone, CloneMode mode)
         }
     }
 
-    g_CloneLifeLoot[0] = {};
-    g_CloneLifeLoot[0].Clone = clone;
-    g_CloneLifeLoot[0].Mode = mode;
-    g_CloneLifeLoot[0].AmmoVariant = RandomInt(0, 4);
-    g_CloneLifeLoot[0].TonicCount = RandomInt(0, 1) == 0 ? 10 : 30;
-    return g_CloneLifeLoot[0];
+    g_CloneLifeLoot.emplace_back();
+    auto& state = g_CloneLifeLoot.back();
+    state.Clone = clone;
+    state.Mode = mode;
+    state.AmmoVariant = RandomInt(0, 4);
+    state.TonicCount = RandomInt(0, 1) == 0 ? 10 : 30;
+    return state;
 }
 
 Hash RareLootAmmoHash(int variant)
@@ -135,8 +136,6 @@ int GiveRareAmmoVerified(int owner, Hash ammoHash, int requestedAmount)
     const int before = std::max(0, WEAPON::GET_PED_AMMO_BY_TYPE(owner, ammoHash));
     int target = before + requestedAmount;
 
-    // Resolve the ammo type back to a weapon so the intended +100 is clamped
-    // only by the actual in-game capacity instead of silently becoming +6.
     const Hash weaponType = WEAPON::_GET_WEAPON_TYPE_FROM_AMMO_TYPE(ammoHash);
     int maxAmmo{};
     if (weaponType && WEAPON::GET_MAX_AMMO(owner, &maxAmmo, weaponType) && maxAmmo >= before)
@@ -182,8 +181,6 @@ int GiveMiracleTonicsVerified(int owner, int requestedAmount)
     for (int i = 0; i < requestedAmount; ++i)
     {
         Rewards::GiveScriptReward(miracleTonic, false);
-        // Reward delivery is not a hot path. Giving the inventory script a tiny
-        // amount of breathing room is much safer than flooding 30 awards at once.
         ScriptMgr::Yield(2ms);
     }
 
@@ -232,8 +229,6 @@ void MaintainCloneHeadFocus(const ManagedClone& managed, CloneLifeLootState& sta
 
     if (!state.AimProfileApplied)
     {
-        // Keep stock combat/navigation, but push the built-in NPC aim model very
-        // close to perfect. Bows remain at the requested 100% accuracy.
         PED::SET_PED_ACCURACY(clone, IsBowWeaponHash(managed.Weapon) ? 100 : 98);
         state.AimProfileApplied = true;
     }
@@ -257,10 +252,6 @@ void MaintainCloneHeadFocus(const ManagedClone& managed, CloneLifeLootState& sta
     if (health < state.LastAimTargetHealth && ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(target, clone, true, true))
     {
         const int observedDamage = state.LastAimTargetHealth - health;
-        // Preserve TASK_COMBAT_PED movement/cover decisions instead of replacing
-        // the AI with a scripted turret. A tiny head-bone correction biases normal
-        // firearms to the head; bows receive the full observed hit again on the
-        // head bone, making their landed shots effectively head-focused.
         const int headCorrection = IsBowWeaponHash(managed.Weapon) ? std::max(1, observedDamage) : 1;
         PED::APPLY_DAMAGE_TO_PED(target, headCorrection, 0, kCloneHeadBone, clone);
     }
@@ -296,9 +287,6 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
             {
                 if (state.LastHorseAppearance != support.Horse)
                 {
-                    // MetaPed horses can exist and accept a rider before their
-                    // drawable variation is finalized. Finalize once, then keep
-                    // visibility/alpha/collision repaired by the low-rate supervisor.
                     PED::_SET_RANDOM_OUTFIT_VARIATION(support.Horse, true);
                     PED::_UPDATE_PED_VARIATION(support.Horse, false, true, true, true, false);
                     ENTITY::SET_ENTITY_VISIBLE(support.Horse, true);
@@ -397,10 +385,6 @@ void SyncCloneLifeAndLoot(int owner, Clock::time_point now)
         }
         else
         {
-            // An external revival must not turn a hostile clone into an ally or
-            // force an artificial second death. ManagedClone keeps FrenzyNpcs as
-            // its mode, so reset only the incap state and let the normal hostile
-            // brain/relationship profile resume on the next low-frequency tick.
             state.WasIncapacitated = false;
             state.IncapacitatedAt = {};
             state.ProfileApplied = false;
