@@ -28,6 +28,11 @@ namespace YimMenu
 		bool g_ApplyEditorSize{true};
 		bool g_DetachedMode{};
 		bool g_DetachedPlacementPending{true};
+		ImVec2 g_EditorPosition{};
+		bool g_HasEditorPosition{};
+		ImVec2 g_PreDetachedPosition{};
+		bool g_HasPreDetachedPosition{};
+		bool g_RestorePlacementPending{};
 
 		float SmoothStep(float value)
 		{
@@ -45,6 +50,8 @@ namespace YimMenu
 			g_SlideProgress = 0.0f;
 			g_DetachedMode = false;
 			g_DetachedPlacementPending = true;
+			g_RestorePlacementPending = false;
+			g_HasPreDetachedPosition = false;
 		}
 	}
 
@@ -114,12 +121,34 @@ namespace YimMenu
 		g_ApplyEditorSize = true;
 		g_DetachedMode = false;
 		g_DetachedPlacementPending = true;
+		g_EditorPosition = {};
+		g_HasEditorPosition = false;
+		g_PreDetachedPosition = {};
+		g_HasPreDetachedPosition = false;
+		g_RestorePlacementPending = false;
 	}
 
 	void AdvancedEditor::SetDetachedMode(bool detached)
 	{
 		if (g_DetachedMode == detached)
 			return;
+
+		if (detached)
+		{
+			if (g_HasEditorPosition)
+			{
+				g_PreDetachedPosition = g_EditorPosition;
+				g_HasPreDetachedPosition = true;
+			}
+			g_RestorePlacementPending = false;
+		}
+		else
+		{
+			// Leaving freecam must never leave the editor where it was dragged.
+			// Restore the exact position it had before detached mode on the next draw.
+			g_RestorePlacementPending = g_HasPreDetachedPosition;
+		}
+
 		g_DetachedMode = detached;
 		g_ApplyEditorSize = true;
 		g_DetachedPlacementPending = detached;
@@ -251,7 +280,9 @@ namespace YimMenu
 
 		const ImVec2 defaultSize(defaultWidth, defaultHeight);
 		const float alpha = GetEditorAlpha();
-		if ((g_DetachedMode && g_DetachedPlacementPending) || (!g_DetachedMode && g_Phase != TransitionPhase::Open))
+		if (!g_DetachedMode && g_RestorePlacementPending && g_HasPreDetachedPosition)
+			ImGui::SetNextWindowPos(g_PreDetachedPosition, ImGuiCond_Always);
+		else if ((g_DetachedMode && g_DetachedPlacementPending) || (!g_DetachedMode && g_Phase != TransitionPhase::Open))
 			ImGui::SetNextWindowPos(editorPosition, ImGuiCond_Always);
 		if (g_DetachedMode || g_ApplyEditorSize)
 			ImGui::SetNextWindowSize(g_DetachedMode ? defaultSize : (g_HasEditorSize ? g_EditorSize : defaultSize), ImGuiCond_Always);
@@ -292,6 +323,16 @@ namespace YimMenu
 				if (clamped.x != currentPos.x || clamped.y != currentPos.y)
 					ImGui::SetWindowPos(clamped, ImGuiCond_Always);
 				g_DetachedPlacementPending = false;
+			}
+			else
+			{
+				g_EditorPosition = ImGui::GetWindowPos();
+				g_HasEditorPosition = true;
+				if (g_RestorePlacementPending)
+				{
+					g_RestorePlacementPending = false;
+					g_HasPreDetachedPosition = false;
+				}
 			}
 
 			ImGui::SetWindowFontScale(1.0f);
