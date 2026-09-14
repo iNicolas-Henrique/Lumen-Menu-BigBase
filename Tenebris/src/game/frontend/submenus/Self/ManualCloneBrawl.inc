@@ -1,6 +1,7 @@
 // Professional lightweight clone combat/support layer.
-// Included immediately before RunCloneBrain so these macros replace only the
-// clone brain helpers while preserving the rest of the legacy implementation.
+// The active manual-clone path keeps its target scan cached/staggered while
+// state storage grows with the number of managed clones instead of imposing an
+// artificial eight-clone tracking ceiling.
 
 constexpr float kAggressiveHorizontalCosSq = 0.25f;      // ~120 degree horizontal FOV.
 constexpr float kAggressiveVerticalTanSq = 0.7040882f;   // ~80 degree vertical FOV.
@@ -20,8 +21,6 @@ constexpr auto kWeaponCombatRetry = 1100ms;
 constexpr auto kWeaponMountedCombatRetry = 2500ms;
 constexpr int kCloneHeadBone = 21030;
 
-// Public-to-this-translation-unit state used by the active editor and the
-// lightweight supervisor added after ManualCloneCore.inc.
 bool g_BodyguardsDismissed{};
 int g_CloneDamagePercent{100};
 
@@ -54,8 +53,8 @@ struct BodyguardThreatCache
 	Clock::time_point NextScan{};
 };
 
-std::array<AggressivePerceptionState, kMaxActiveClones> g_AggressivePerception{};
-std::array<CloneSupportState, kMaxActiveClones> g_CloneSupport{};
+std::vector<AggressivePerceptionState> g_AggressivePerception{};
+std::vector<CloneSupportState> g_CloneSupport{};
 BodyguardThreatCache g_BodyguardThreatCache{};
 
 void DeleteSupportHorse(CloneSupportState& state);
@@ -71,7 +70,8 @@ bool IsHostileCloneAlly(int source, int candidate)
 {
 	auto* sourceManaged = FindManagedClone(source);
 	auto* candidateManaged = FindManagedClone(candidate);
-	return sourceManaged && candidateManaged && sourceManaged->Mode == CloneMode::FrenzyNpcs && candidateManaged->Mode == CloneMode::FrenzyNpcs;
+	return sourceManaged && candidateManaged &&
+		sourceManaged->Mode == CloneMode::FrenzyNpcs && candidateManaged->Mode == CloneMode::FrenzyNpcs;
 }
 
 bool IsAssignedCloneHorse(int candidate)
@@ -88,11 +88,12 @@ bool IsAnyLiveDamageablePedTarget(int candidate, int clone)
 {
 	if (!candidate || candidate == clone || !ENTITY::DOES_ENTITY_EXIST(candidate) || ENTITY::IS_ENTITY_DEAD(candidate))
 		return false;
+	if (!PED::IS_PED_HUMAN(candidate))
+		return false; // Never target horses, wildlife, dogs or any other animal.
 	if (IsHostileCloneAlly(clone, candidate) || IsAssignedCloneHorse(candidate))
 		return false;
-	// Shopkeepers and other protected ambient peds are made non-damageable by
-	// the game. Never select them: TASK_COMBAT_PED would otherwise keep trying
-	// to kill an entity that the engine refuses to damage.
+	// Protected shopkeepers and similar script-owned NPCs are commonly marked
+	// non-damageable. Do not let the combat task lock onto an immortal target.
 	if (!ENTITY::_GET_ENTITY_CAN_BE_DAMAGED(candidate))
 		return false;
 	return true;
@@ -113,9 +114,11 @@ AggressivePerceptionState& GetAggressivePerception(int clone)
 			return state;
 		}
 	}
-	g_AggressivePerception[0] = {};
-	g_AggressivePerception[0].Clone = clone;
-	return g_AggressivePerception[0];
+	g_AggressivePerception.emplace_back();
+	auto& state = g_AggressivePerception.back();
+	state.Clone = clone;
+	state.NextScan = Clock::now() + std::chrono::milliseconds((std::abs(clone) % 5) * 73);
+	return state;
 }
 
 CloneSupportState& GetCloneSupportState(int clone)
@@ -133,10 +136,9 @@ CloneSupportState& GetCloneSupportState(int clone)
 			return state;
 		}
 	}
-	DeleteSupportHorse(g_CloneSupport[0]);
-	g_CloneSupport[0] = {};
-	g_CloneSupport[0].Clone = clone;
-	return g_CloneSupport[0];
+	g_CloneSupport.emplace_back();
+	g_CloneSupport.back().Clone = clone;
+	return g_CloneSupport.back();
 }
 
 void EnsureSupportHorseVisible(int horse)
@@ -363,8 +365,6 @@ void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 	if (!clone || !ENTITY::DOES_ENTITY_EXIST(clone))
 		return;
 
-	// Keep our existing target selection/brain untouched. These settings only
-	// tune how RDR2's native combat task behaves after the clone already has a target.
 	auto& support = GetCloneSupportState(clone);
 	if (support.AppliedCombatProfileWeapon == weapon && weapon)
 		return;
@@ -372,37 +372,25 @@ void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 
 	PED::SET_PED_COMBAT_ABILITY(clone, 3);
 	PED::SET_PED_ACCURACY(clone, IsBowWeaponHash(weapon) ? 100 : 96);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 13, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);
+	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 58, true);
+	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);
 
-	// Preserve the proven baseline that the clone brain already used.
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 4, true);   // strafe based on target proximity
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 5, true);   // always fight
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 13, true);  // cover search arc away from target
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 21, true);  // chase target on foot
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 23, true);  // existing Tenebris behavior; semantics unresolved
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 24, true);  // proximity firing rate
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 27, true);  // perfect accuracy
-	PED::SET_PED_COMBAT_ATTRIBUTES(clone, 58, true);  // never flee from combat
-	PED::SET_COMBAT_FLOAT(clone, 26, 0.0f);           // no artificial accuracy offset
-
-	// Attributes controlled by the weapon profile. Reset first so a future
-	// weapon change cannot leave stale shotgun/sniper behavior on the same clone.
 	constexpr int kProfileAttributes[] = {0, 8, 12, 16, 28, 31, 42, 43, 44, 46, 47, 50, 71};
 	for (const int attribute : kProfileAttributes)
 		PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, false);
 
-	auto setAttribute = [clone](int attribute) {
-		PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, true);
-	};
-	auto setFloats = [clone](float maxShootingDistance,
-	                        float timeBetweenBurstsInCover,
-	                        float strafeChance,
-	                        float minimumDistance,
-	                        float optimalCoverDistance,
-	                        float crouchChance,
-	                        float hipFireChance,
-	                        float minTimeBeforeCharge,
-	                        float standAndFireDistance,
-	                        float minimumInCoverDistance) {
+	auto setAttribute = [clone](int attribute) { PED::SET_PED_COMBAT_ATTRIBUTES(clone, attribute, true); };
+	auto setFloats = [clone](float maxShootingDistance, float timeBetweenBurstsInCover,
+		float strafeChance, float minimumDistance, float optimalCoverDistance,
+		float crouchChance, float hipFireChance, float minTimeBeforeCharge,
+		float standAndFireDistance, float minimumInCoverDistance) {
 		PED::SET_COMBAT_FLOAT(clone, 2, maxShootingDistance);
 		PED::SET_COMBAT_FLOAT(clone, 3, timeBetweenBurstsInCover);
 		PED::SET_COMBAT_FLOAT(clone, 5, strafeChance);
@@ -417,115 +405,56 @@ void ApplyProfessionalCombatProfile(int clone, Hash weapon)
 
 	if (IsMeleeWeaponHash(weapon))
 	{
-		// Melee: commit to the chase and close distance instead of looking for cover.
-		setAttribute(8);
-		setAttribute(28);
-		setAttribute(43);
-		setAttribute(46);
-		setAttribute(50);
-		setAttribute(71);
+		for (int attr : {8, 28, 43, 46, 50, 71}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 0);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
 		setFloats(8.0f, 0.25f, 0.85f, 0.0f, 0.0f, 0.0f, 0.0f, 0.20f, 0.0f, 0.0f);
 	}
 	else if (IsShotgunWeaponHash(weapon))
 	{
-		// Shotgun: fast aggressive pushes, flanks and high close-range hip-fire use.
-		setAttribute(8);
-		setAttribute(16);
-		setAttribute(28);
-		setAttribute(42);
-		setAttribute(43);
-		setAttribute(50);
-		setAttribute(71);
+		for (int attr : {8, 16, 28, 42, 43, 50, 71}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 0);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
 		setFloats(55.0f, 0.75f, 0.85f, 3.0f, 10.0f, 0.08f, 0.90f, 0.80f, 14.0f, 4.0f);
 	}
 	else if (IsSniperWeaponHash(weapon))
 	{
-		// Sniper: preserve distance, favor cover/tactical positions and avoid rushing.
-		setAttribute(0);
-		setAttribute(16);
-		setAttribute(31);
-		setAttribute(43);
-		setAttribute(44);
-		setAttribute(47);
+		for (int attr : {0, 16, 31, 43, 44, 47}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 3);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
 		setFloats(280.0f, 1.60f, 0.25f, 45.0f, 58.0f, 0.78f, 0.0f, 7.0f, 48.0f, 24.0f);
 	}
 	else if (IsBowWeaponHash(weapon))
 	{
-		// Bow: mobile long-range fighter with cover, flanking and target spacing.
-		setAttribute(0);
-		setAttribute(8);
-		setAttribute(16);
-		setAttribute(31);
-		setAttribute(42);
-		setAttribute(43);
-		setAttribute(44);
-		setAttribute(47);
+		for (int attr : {0, 8, 16, 31, 42, 43, 44, 47}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 3);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
 		setFloats(140.0f, 1.25f, 0.45f, 24.0f, 34.0f, 0.62f, 0.0f, 3.0f, 32.0f, 14.0f);
 	}
 	else if (IsSidearmWeaponHash(weapon))
 	{
-		// Revolvers/pistols: active strafing, short-medium cover and opportunistic flanks.
-		setAttribute(0);
-		setAttribute(8);
-		setAttribute(12);
-		setAttribute(16);
-		setAttribute(42);
-		setAttribute(43);
-		setAttribute(44);
-		setAttribute(47);
+		for (int attr : {0, 8, 12, 16, 42, 43, 44, 47}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 1);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 3);
 		setFloats(85.0f, 0.80f, 0.90f, 7.0f, 18.0f, 0.20f, 0.72f, 1.50f, 20.0f, 6.0f);
 	}
 	else if (IsRepeaterWeaponHash(weapon))
 	{
-		// Repeaters: balanced rifleman behavior with cover, flanks and sustained pressure.
-		setAttribute(0);
-		setAttribute(8);
-		setAttribute(12);
-		setAttribute(16);
-		setAttribute(31);
-		setAttribute(42);
-		setAttribute(43);
-		setAttribute(44);
-		setAttribute(47);
+		for (int attr : {0, 8, 12, 16, 31, 42, 43, 44, 47}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 2);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
 		setFloats(145.0f, 1.00f, 0.65f, 16.0f, 28.0f, 0.42f, 0.35f, 2.50f, 28.0f, 10.0f);
 	}
 	else if (IsRifleWeaponHash(weapon))
 	{
-		// Rifles: more deliberate spacing and cover than repeaters, without sniper passivity.
-		setAttribute(0);
-		setAttribute(8);
-		setAttribute(12);
-		setAttribute(16);
-		setAttribute(31);
-		setAttribute(42);
-		setAttribute(43);
-		setAttribute(44);
-		setAttribute(47);
+		for (int attr : {0, 8, 12, 16, 31, 42, 43, 44, 47}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 2);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
 		setFloats(180.0f, 1.20f, 0.50f, 24.0f, 36.0f, 0.58f, 0.18f, 3.50f, 34.0f, 14.0f);
 	}
 	else
 	{
-		// Unknown/custom weapon: conservative balanced profile rather than changing tasks.
-		setAttribute(0);
-		setAttribute(8);
-		setAttribute(16);
-		setAttribute(42);
-		setAttribute(43);
-		setAttribute(44);
+		for (int attr : {0, 8, 16, 42, 43, 44}) setAttribute(attr);
 		PED::SET_PED_COMBAT_RANGE(clone, 2);
 		PED::SET_PED_COMBAT_MOVEMENT(clone, 2);
 		setFloats(120.0f, 1.00f, 0.60f, 14.0f, 26.0f, 0.35f, 0.30f, 2.50f, 26.0f, 10.0f);
@@ -756,8 +685,7 @@ void MaintainProfessionalBodyguardFollow(int clone, int owner, Clock::time_point
 
 	const bool dismissed = g_BodyguardsDismissed;
 	const bool ownerMounted = !dismissed && GetPlayerMountHandle() != 0;
-	const bool shouldUseHorse = dismissed || ownerMounted;
-	if (shouldUseHorse && now >= nextHorse && !PED::IS_PED_IN_COMBAT(clone, 0))
+	if ((dismissed || ownerMounted) && now >= nextHorse && !PED::IS_PED_IN_COMBAT(clone, 0))
 	{
 		ForceGuardMount(clone, anchor, true);
 		nextHorse = now + kGuardHorseAcquireInterval;
@@ -769,8 +697,7 @@ void MaintainProfessionalBodyguardFollow(int clone, int owner, Clock::time_point
 		const int mount = PED::IS_PED_ON_MOUNT(clone) ? PED::GET_MOUNT(clone) : 0;
 		const int travelEntity = mount && ENTITY::DOES_ENTITY_EXIST(mount) ? mount : clone;
 		ENTITY::SET_ENTITY_COORDS_NO_OFFSET(travelEntity, catchup.x, catchup.y, catchup.z, true, true, true);
-		if (mount)
-			EnsureSupportHorseVisible(mount);
+		if (mount) EnsureSupportHorseVisible(mount);
 		followIssued = false;
 		nextFollow = now;
 		return;
@@ -873,10 +800,8 @@ void DeleteAllManagedClonesAndMounts()
 	g_SessionBrawlRunning = false;
 	g_RemoteControlledClone = 0;
 	for (auto& state : g_CloneSupport)
-	{
 		DeleteSupportHorse(state);
-		state = {};
-	}
+	g_CloneSupport.clear();
 	for (auto& managed : g_ManagedClones)
 	{
 		if (managed.Ped && ENTITY::DOES_ENTITY_EXIST(managed.Ped))
@@ -889,7 +814,7 @@ void DeleteAllManagedClonesAndMounts()
 	g_BodyguardsBetrayed = false;
 	g_BodyguardsDismissed = false;
 	g_TotalSpawned = 0;
-	g_AggressivePerception.fill({});
+	g_AggressivePerception.clear();
 	g_BodyguardThreatCache = {};
 	ResetMourning();
 	Notifications::Show("Tenebris", Localization::IsPortuguese() ? "Todos os clones e cavalos foram removidos." : "All clones and horses were removed.", NotificationType::Success, 2200);
@@ -898,11 +823,9 @@ void DeleteAllManagedClonesAndMounts()
 void RunSessionCloneBrawl(CloneOptions)
 {
 	g_SessionBrawlRunning = false;
-	Notifications::Show(
-	    "Tenebris",
-	    Localization::IsPortuguese() ? "Batalha/Expedição foi removida da versão otimizada." : "Brawl/Expedition was removed from the optimized build.",
-	    NotificationType::Info,
-	    2200);
+	Notifications::Show("Tenebris",
+		Localization::IsPortuguese() ? "Batalha/Expedição foi removida da versão otimizada." : "Brawl/Expedition was removed from the optimized build.",
+		NotificationType::Info, 2200);
 }
 
 #define FindNearestNpcTarget(clone, owner, radius) FindProfessionalVisibleCloneTarget((clone), (radius))
