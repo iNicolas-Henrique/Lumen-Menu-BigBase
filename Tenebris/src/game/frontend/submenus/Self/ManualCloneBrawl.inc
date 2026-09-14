@@ -73,11 +73,26 @@ bool IsHostileCloneAlly(int source, int candidate)
 	return sourceManaged && candidateManaged && sourceManaged->Mode == CloneMode::FrenzyNpcs && candidateManaged->Mode == CloneMode::FrenzyNpcs;
 }
 
-bool IsAnyLiveHumanPedTarget(int candidate, int clone)
+bool IsAssignedCloneHorse(int candidate)
 {
-	if (!candidate || candidate == clone || !ENTITY::DOES_ENTITY_EXIST(candidate) || ENTITY::IS_ENTITY_DEAD(candidate) || !PED::IS_PED_HUMAN(candidate))
+	if (!candidate)
 		return false;
-	if (IsHostileCloneAlly(clone, candidate))
+	for (const auto& support : g_CloneSupport)
+		if (support.Horse == candidate)
+			return true;
+	return false;
+}
+
+bool IsAnyLiveDamageablePedTarget(int candidate, int clone)
+{
+	if (!candidate || candidate == clone || !ENTITY::DOES_ENTITY_EXIST(candidate) || ENTITY::IS_ENTITY_DEAD(candidate))
+		return false;
+	if (IsHostileCloneAlly(clone, candidate) || IsAssignedCloneHorse(candidate))
+		return false;
+	// Shopkeepers and other protected ambient peds are made non-damageable by
+	// the game. Never select them: TASK_COMBAT_PED would otherwise keep trying
+	// to kill an entity that the engine refuses to damage.
+	if (!ENTITY::GET_ENTITY_CAN_BE_DAMAGED(candidate))
 		return false;
 	return true;
 }
@@ -210,7 +225,7 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 	radius = std::clamp(radius, 20.0f, 500.0f);
 	const auto now = Clock::now();
 	auto& memory = GetAggressivePerception(clone);
-	if (now < memory.NextScan && IsAnyLiveHumanPedTarget(memory.Target, clone))
+	if (now < memory.NextScan && IsAnyLiveDamageablePedTarget(memory.Target, clone))
 		return memory.Target;
 	memory.NextScan = now + kAggressiveMinScanInterval + std::chrono::milliseconds((std::abs(clone) % 4) * 31);
 
@@ -225,7 +240,7 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 	for (const auto& cached : GetCachedPeds())
 	{
 		const int candidate = cached.Handle;
-		if (!IsAnyLiveHumanPedTarget(candidate, clone))
+		if (!IsAnyLiveDamageablePedTarget(candidate, clone))
 			continue;
 		const float dx = cached.Position.x - origin.x;
 		const float dy = cached.Position.y - origin.y;
@@ -275,7 +290,7 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 
 	if (visibleTarget)
 	{
-		const bool keepCurrent = IsAnyLiveHumanPedTarget(memory.Target, clone) &&
+		const bool keepCurrent = IsAnyLiveDamageablePedTarget(memory.Target, clone) &&
 			memory.Target != visibleTarget && memory.TargetScore + kAggressiveSwitchMargin >= visibleScore &&
 			now - memory.LastVisible <= kAggressiveTargetMemory;
 		if (!keepCurrent)
@@ -287,7 +302,7 @@ int FindProfessionalVisibleCloneTarget(int clone, float radius)
 		return memory.Target;
 	}
 
-	if (IsAnyLiveHumanPedTarget(memory.Target, clone) && now - memory.LastVisible <= kAggressiveTargetMemory)
+	if (IsAnyLiveDamageablePedTarget(memory.Target, clone) && now - memory.LastVisible <= kAggressiveTargetMemory)
 	{
 		const float leash = radius * kAggressiveMemoryLeash;
 		if (DistanceSquared(origin, ENTITY::GET_ENTITY_COORDS(memory.Target, true, false)) <= leash * leash)
@@ -515,7 +530,7 @@ int FindProfessionalBodyguardThreat(int clone, int owner, float radius)
 	if (!clone || !anchor || !ENTITY::DOES_ENTITY_EXIST(clone) || !ENTITY::DOES_ENTITY_EXIST(anchor))
 		return 0;
 	const auto now = Clock::now();
-	if (g_BodyguardThreatCache.Anchor == anchor && now < g_BodyguardThreatCache.NextScan && IsAnyLiveHumanPedTarget(g_BodyguardThreatCache.Threat, clone))
+	if (g_BodyguardThreatCache.Anchor == anchor && now < g_BodyguardThreatCache.NextScan && IsAnyLiveDamageablePedTarget(g_BodyguardThreatCache.Threat, clone))
 		return g_BodyguardThreatCache.Threat;
 	g_BodyguardThreatCache.Anchor = anchor;
 	g_BodyguardThreatCache.NextScan = now + kGuardThreatCacheInterval;
@@ -530,7 +545,7 @@ int FindProfessionalBodyguardThreat(int clone, int owner, float radius)
 		if (!NETWORK::NETWORK_IS_PLAYER_ACTIVE(id))
 			continue;
 		const int ped = PLAYER::GET_PLAYER_PED_SCRIPT_INDEX(id);
-		if (!ped || ped == anchor || ped == clone || !ENTITY::DOES_ENTITY_EXIST(ped) || ENTITY::IS_ENTITY_DEAD(ped))
+		if (!ped || ped == anchor || ped == clone || !IsAnyLiveDamageablePedTarget(ped, clone))
 			continue;
 		const bool aiming = PLAYER::IS_PLAYER_FREE_AIMING_AT_ENTITY(id, anchor) || PLAYER::IS_PLAYER_TARGETTING_ENTITY(id, anchor);
 		if (!aiming && !PED::IS_PED_IN_COMBAT(ped, anchor) && !ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(anchor, ped, true, true))
@@ -546,7 +561,7 @@ int FindProfessionalBodyguardThreat(int clone, int owner, float radius)
 	for (const auto& cached : GetCachedPeds())
 	{
 		const int ped = cached.Handle;
-		if (!ped || ped == anchor || ped == clone || cached.Dead || !PED::IS_PED_HUMAN(ped) || IsHostileCloneAlly(clone, ped))
+		if (!ped || ped == anchor || ped == clone || cached.Dead || !IsAnyLiveDamageablePedTarget(ped, clone))
 			continue;
 		const bool threatening = PED::IS_PED_IN_COMBAT(ped, anchor) || PED::IS_PED_IN_COMBAT(anchor, ped) || ENTITY::HAS_ENTITY_BEEN_DAMAGED_BY_ENTITY(anchor, ped, true, true);
 		if (!threatening)
@@ -692,7 +707,7 @@ void MaybeStartMourningOnFoot(int deadClone, CloneMode deadMode)
 
 void TaskProfessionalCloneCombat(int clone, int target, Hash desiredWeapon)
 {
-	if (!IsAnyLiveHumanPedTarget(target, clone))
+	if (!IsAnyLiveDamageablePedTarget(target, clone))
 		return;
 	StableEnsureCloneWeaponEquipped(clone, desiredWeapon);
 	ApplyProfessionalCombatProfile(clone, desiredWeapon);
@@ -741,7 +756,7 @@ void RunSessionCloneBrawl(CloneOptions)
 }
 
 #define FindNearestNpcTarget(clone, owner, radius) FindProfessionalVisibleCloneTarget((clone), (radius))
-#define IsValidNpcTarget(candidate, clone, owner) IsAnyLiveHumanPedTarget((candidate), (clone))
+#define IsValidNpcTarget(candidate, clone, owner) IsAnyLiveDamageablePedTarget((candidate), (clone))
 #define TaskVanillaCombat(clone, target, owner, desiredWeapon) TaskProfessionalCloneCombat((clone), (target), (desiredWeapon))
 #define EnsureCloneWeaponEquipped(clone, desiredWeapon) StableEnsureCloneWeaponEquipped((clone), (desiredWeapon))
 #define FindBodyguardThreat(clone, owner, radius) FindProfessionalBodyguardThreat((clone), (owner), (radius))
